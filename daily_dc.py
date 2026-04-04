@@ -4,7 +4,7 @@ import logger
 import sys
 import asyncio
 import glob
-import pandas_ta as ta
+import pandas_ta_classic as ta
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
