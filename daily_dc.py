@@ -4,7 +4,6 @@ import logger
 import sys
 import asyncio
 import glob
-import vectorbt as vbt
 import pandas_ta as ta
 
 if sys.platform.startswith('win'):
@@ -96,9 +95,9 @@ def save_to_csv(symbol, data):
         df['timestamp'] = df['timestamp'].dt.tz_localize(None)
 
         close = df['close']
-        df['sma20'] = vbt.MA.run(close, window=20).ma
-        df['sma50'] = vbt.MA.run(close, window=50).ma
-        df['sma100'] = vbt.MA.run(close, window=100).ma
+        df['sma20'] = close.rolling(window=20).mean()
+        df['sma50'] = close.rolling(window=50).mean()
+        df['sma100'] = close.rolling(window=100).mean()
         df['rsi14'] = ta.rsi(close, length=14)
 
         csv_path = os.path.join(data_path, f"{symbol}.csv")

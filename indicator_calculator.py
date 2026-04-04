@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-import vectorbt as vbt
 import pandas as pd
 import pandas_ta as ta
 import os
@@ -23,18 +22,16 @@ def calculate_and_save_indicators(symbol):
         df.set_index("timestamp", inplace=True)
 
         close = df['close']
-        df['sma20'] = vbt.MA.run(close, window=20).ma
-        df['sma50'] = vbt.MA.run(close, window=50).ma
-        df['sma100'] = vbt.MA.run(close, window=100).ma
-        # df['rsi14'] = vbt.RSI.run(close, window=14).rsi
-        # This one matches with tradingview instead of using vbt
+        df['sma20'] = close.rolling(window=20).mean()
+        df['sma50'] = close.rolling(window=50).mean()
+        df['sma100'] = close.rolling(window=100).mean()
         df['rsi14'] = ta.rsi(close, length=14)
 
         day_open = df.groupby('date_only')['open'].transform('first')
         df['day_change_percent'] = ((df['close'] - day_open) / day_open) * 100
 
         volume = df['volume']
-        df['volume_sma20'] = vbt.MA.run(volume, window=20).ma
+        df['volume_sma20'] = volume.rolling(window=20).mean()
 
         indicators_csv = os.path.join(indicators_path, f"{symbol}_indicators.csv")
         df.to_csv(indicators_csv, mode='w')
