@@ -13,9 +13,10 @@ if sys.platform.startswith('win'):
 
 import aiohttp
 import time
-import pandas_ta_classic as ta
+import pandas_ta as ta
 from discord_integrator import upload_to_discord
 from dotenv import load_dotenv
+import boto3
 
 load_dotenv()
 
@@ -31,6 +32,10 @@ rsi_sentiment_image_path = os.path.join(script_dir, "hourly_market_pulse", "rsi_
 discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK", "https://discord.com/api/webhooks/1369672316887367761/zlxHjxikEEhSOK-TcRmz37jH-2kVl8NAiB_BIMdXd0TAco9DnfI5MYGa8Nuuy34poarQ")
 if not os.getenv("MARKET_PULSE_WEBHOOK"):
     logger.log_event(log_category="WARNING", message="MARKET_PULSE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting MARKET_PULSE_WEBHOOK in .env or CI secrets.", path=log_path)
+
+# AWS S3 configuration
+S3_BUCKET_NAME = "data-portfolio-2026"
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 BASE_URL = "https://fapi.binance.com/fapi/v1/klines"
 INTERVAL = "1h"
@@ -364,6 +369,48 @@ def generate_rsi_sentiment_chart(indicators_data):
         return False
 
 
+def upload_files_to_s3(file_paths):
+    """
+    Upload CSV files to S3 bucket
+    :param file_paths: List of file paths to upload
+    """
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
+        
+        uploaded_files = []
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                logger.log_event(log_category="WARNING", message=f"File {file_path} does not exist, skipping S3 upload", path=log_path)
+                continue
+            
+            try:
+                # Get the file name for S3 key
+                file_name = os.path.basename(file_path)
+                s3_key = f"market-pulse/{file_name}"
+                
+                # Upload file to S3
+                s3_client.upload_file(file_path, S3_BUCKET_NAME, s3_key)
+                uploaded_files.append(s3_key)
+                logger.log_event(log_category="INFO", message=f"Successfully uploaded {file_name} to S3 bucket {S3_BUCKET_NAME} at {s3_key}", path=log_path)
+                print(f"✓ Uploaded {file_name} to S3")
+            except Exception as e:
+                logger.log_event(log_category="ERROR", message=f"Failed to upload {file_path} to S3. Error: {e}", path=log_path)
+                print(f"✗ Failed to upload {file_path}: {e}")
+        
+        if uploaded_files:
+            logger.log_event(log_category="INFO", message=f"Successfully uploaded {len(uploaded_files)} files to S3", path=log_path)
+            return True
+        else:
+            logger.log_event(log_category="WARNING", message="No files were uploaded to S3", path=log_path)
+            return False
+    
+    except Exception as e:
+        logger.log_event(log_category="ERROR", message=f"Failed to initialize S3 client or upload files. Error: {e}", path=log_path)
+        print(f"✗ Failed to upload to S3: {e}")
+        return False
+
+
 if __name__ == "__main__":
     print(f"Running {__file__}...")
     
@@ -402,10 +449,14 @@ if __name__ == "__main__":
     print("Calculating trend counts...")
     trend_df = calculate_trend_counts(indicators_data)
     
-    # Step 7: Generate visualizations
+    # Step 7: Upload CSV files to S3
+    print("Uploading CSV files to S3...")
+    upload_files_to_s3([prices_output_path, trend_output_path])
+    
+    # Step 8: Generate visualizations
     print("Generating market pulse chart...")
     if generate_market_pulse_chart(trend_df):
-        # Step 8: Upload market pulse to Discord
+        # Step 9: Upload market pulse to Discord
         try:
             upload_to_discord(discord_webhook_url, image_path=market_pulse_image_path)
             logger.log_event(log_category="INFO", message="Successfully uploaded market pulse chart to Discord", path=log_path)
@@ -416,7 +467,7 @@ if __name__ == "__main__":
     
     print("Generating RSI sentiment chart...")
     if generate_rsi_sentiment_chart(indicators_data):
-        # Step 9: Upload RSI sentiment to Discord
+        # Step 10: Upload RSI sentiment to Discord
         try:
             upload_to_discord(discord_webhook_url, image_path=rsi_sentiment_image_path)
             logger.log_event(log_category="INFO", message="Successfully uploaded RSI sentiment chart to Discord", path=log_path)
