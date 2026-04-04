@@ -7,13 +7,14 @@ import asyncio
 from collections import defaultdict
 import matplotlib.pyplot as plt
 from scipy.stats import skew
+from io import BytesIO
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import aiohttp
 import time
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from discord_integrator import upload_to_discord
 from dotenv import load_dotenv
 import boto3
@@ -23,8 +24,6 @@ load_dotenv()
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
 coin_list_path = os.path.join(script_dir, "coin_list.txt")
-prices_output_path = os.path.join(script_dir, "prices_1h.csv")
-trend_output_path = os.path.join(script_dir, "coin_trend_1h.csv")
 market_pulse_image_path = os.path.join(script_dir, "hourly_market_pulse", "market_pulse.png")
 rsi_sentiment_image_path = os.path.join(script_dir, "hourly_market_pulse", "rsi_sentiment.png")
 
@@ -126,7 +125,7 @@ def parse_raw_data_to_dataframe(symbol, raw_data):
 
 def calculate_price_changes(in_memory_data):
     """
-    Calculate 1-hour price changes for all symbols and keep only the latest for each symbol
+    Calculate 1-hour price changes for all symbols and save directly to S3
     :param in_memory_data: Dictionary {symbol: DataFrame}
     :return: DataFrame with symbol, timestamp, close, previous_close, price_change_1h (latest only)
     """
@@ -147,8 +146,10 @@ def calculate_price_changes(in_memory_data):
         
         price_changes_df = pd.concat(price_changes, ignore_index=True)
         price_changes_df = price_changes_df[['symbol', 'timestamp', 'close', 'previous_close', 'price_change_1h']]
-        price_changes_df.to_csv(prices_output_path, index=False, mode='w')
-        logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes to {prices_output_path}", path=log_path)
+        
+        # Save directly to S3
+        upload_dataframe_to_s3(price_changes_df, "price_change/prices_1h.csv")
+        logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes to S3", path=log_path)
         return price_changes_df
     except Exception as e:
         logger.log_event(log_category="ERROR", message=f"Failed to calculate price changes. Error: {e}", path=log_path)
@@ -221,7 +222,7 @@ def determine_trend(row):
 
 def calculate_trend_counts(indicators_data):
     """
-    Calculate trend counts per timestamp across all symbols
+    Calculate trend counts per timestamp across all symbols and save directly to S3
     :param indicators_data: Dictionary {symbol: DataFrame}
     :return: DataFrame with trend counts per timestamp
     """
@@ -246,8 +247,10 @@ def calculate_trend_counts(indicators_data):
         trend_df = pd.DataFrame.from_dict(trend_counter, orient='index')
         trend_df.index.name = 'timestamp'
         trend_df = trend_df.sort_index()
-        trend_df.to_csv(trend_output_path, mode='w')
-        logger.log_event(log_category="INFO", message=f"Successfully saved trend counts to {trend_output_path}", path=log_path)
+        
+        # Save directly to S3
+        upload_dataframe_to_s3(trend_df, "market_pulse/coin_trend_1h.csv")
+        logger.log_event(log_category="INFO", message=f"Successfully saved trend counts to S3", path=log_path)
         return trend_df
     except Exception as e:
         logger.log_event(log_category="ERROR", message=f"Failed to calculate trend counts. Error: {e}", path=log_path)
@@ -369,45 +372,30 @@ def generate_rsi_sentiment_chart(indicators_data):
         return False
 
 
-def upload_files_to_s3(file_paths):
+def upload_dataframe_to_s3(dataframe, s3_key):
     """
-    Upload CSV files to S3 bucket
-    :param file_paths: List of file paths to upload
+    Upload DataFrame directly to S3 as CSV without saving locally
+    :param dataframe: pandas DataFrame to upload
+    :param s3_key: S3 key path (e.g., "market_pulse/coin_trend_1h.csv" or "price_change/prices_1h.csv")
     """
     try:
         # Initialize S3 client
         s3_client = boto3.client('s3', region_name=AWS_REGION)
         
-        uploaded_files = []
-        for file_path in file_paths:
-            if not os.path.exists(file_path):
-                logger.log_event(log_category="WARNING", message=f"File {file_path} does not exist, skipping S3 upload", path=log_path)
-                continue
-            
-            try:
-                # Get the file name for S3 key
-                file_name = os.path.basename(file_path)
-                s3_key = f"market-pulse/{file_name}"
-                
-                # Upload file to S3
-                s3_client.upload_file(file_path, S3_BUCKET_NAME, s3_key)
-                uploaded_files.append(s3_key)
-                logger.log_event(log_category="INFO", message=f"Successfully uploaded {file_name} to S3 bucket {S3_BUCKET_NAME} at {s3_key}", path=log_path)
-                print(f"✓ Uploaded {file_name} to S3")
-            except Exception as e:
-                logger.log_event(log_category="ERROR", message=f"Failed to upload {file_path} to S3. Error: {e}", path=log_path)
-                print(f"✗ Failed to upload {file_path}: {e}")
+        # Convert DataFrame to CSV in memory
+        csv_buffer = BytesIO()
+        dataframe.to_csv(csv_buffer, index=True)
+        csv_buffer.seek(0)
         
-        if uploaded_files:
-            logger.log_event(log_category="INFO", message=f"Successfully uploaded {len(uploaded_files)} files to S3", path=log_path)
-            return True
-        else:
-            logger.log_event(log_category="WARNING", message="No files were uploaded to S3", path=log_path)
-            return False
+        # Upload to S3
+        s3_client.upload_fileobj(csv_buffer, S3_BUCKET_NAME, s3_key)
+        logger.log_event(log_category="INFO", message=f"Successfully uploaded {s3_key} to S3 bucket {S3_BUCKET_NAME}", path=log_path)
+        print(f"✓ Uploaded {s3_key} to S3")
+        return True
     
     except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to initialize S3 client or upload files. Error: {e}", path=log_path)
-        print(f"✗ Failed to upload to S3: {e}")
+        logger.log_event(log_category="ERROR", message=f"Failed to upload {s3_key} to S3. Error: {e}", path=log_path)
+        print(f"✗ Failed to upload {s3_key} to S3: {e}")
         return False
 
 
@@ -437,26 +425,22 @@ if __name__ == "__main__":
     
     print(f"Successfully parsed {len(in_memory_data)} symbols.")
     
-    # Step 4: Calculate price changes and save to prices_1h.csv
-    print("Calculating price changes...")
+    # Step 4: Calculate price changes and save directly to S3
+    print("Calculating price changes and uploading to S3...")
     calculate_price_changes(in_memory_data)
     
     # Step 5: Calculate indicators in memory
     print("Calculating indicators...")
     indicators_data = calculate_indicators_in_memory(in_memory_data)
     
-    # Step 6: Calculate trend counts and save to coin_trend_1h.csv
-    print("Calculating trend counts...")
+    # Step 6: Calculate trend counts and save directly to S3
+    print("Calculating trend counts and uploading to S3...")
     trend_df = calculate_trend_counts(indicators_data)
     
-    # Step 7: Upload CSV files to S3
-    print("Uploading CSV files to S3...")
-    upload_files_to_s3([prices_output_path, trend_output_path])
-    
-    # Step 8: Generate visualizations
+    # Step 7: Generate visualizations
     print("Generating market pulse chart...")
     if generate_market_pulse_chart(trend_df):
-        # Step 9: Upload market pulse to Discord
+        # Step 8: Upload market pulse to Discord
         try:
             upload_to_discord(discord_webhook_url, image_path=market_pulse_image_path)
             logger.log_event(log_category="INFO", message="Successfully uploaded market pulse chart to Discord", path=log_path)
@@ -467,7 +451,7 @@ if __name__ == "__main__":
     
     print("Generating RSI sentiment chart...")
     if generate_rsi_sentiment_chart(indicators_data):
-        # Step 10: Upload RSI sentiment to Discord
+        # Step 9: Upload RSI sentiment to Discord
         try:
             upload_to_discord(discord_webhook_url, image_path=rsi_sentiment_image_path)
             logger.log_event(log_category="INFO", message="Successfully uploaded RSI sentiment chart to Discord", path=log_path)
@@ -477,7 +461,7 @@ if __name__ == "__main__":
             print(f"✗ Failed to upload RSI sentiment chart: {e}")
     
     print("\n✓ Process completed successfully!")
-    print(f"  - Price changes saved to: {prices_output_path}")
-    print(f"  - Trend counts saved to: {trend_output_path}")
+    print(f"  - Price changes uploaded to S3: s3://{S3_BUCKET_NAME}/price_change/prices_1h.csv")
+    print(f"  - Trend counts uploaded to S3: s3://{S3_BUCKET_NAME}/market_pulse/coin_trend_1h.csv")
     print(f"  - Market pulse chart saved to: {market_pulse_image_path}")
     print(f"  - RSI sentiment chart saved to: {rsi_sentiment_image_path}")
