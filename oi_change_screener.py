@@ -21,7 +21,6 @@ log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
 coin_data_csv = os.path.join(script_dir, "coin_data.csv")
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
 hourly_data_dir = os.path.join(script_dir, "hourly_data")
-market_cap_csv = os.path.join(script_dir, "market_cap_data.csv")
 prices_csv = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
 oi_changes_csv = os.path.join(script_dir, "oi_changes_1h.csv")
 
@@ -79,44 +78,44 @@ def get_previous_top20():
         return set()
 
 
-def load_category_data(market_cap_csv_path):
+def load_category_data(coin_data_csv_path):
     """
-    Load category information from market_cap_data.csv
-    Returns dict mapping coin -> category (defaults to 'N/A' if empty)
+    Load market cap category information from coin_data.csv
+    Returns dict mapping coin -> market_cap_category (defaults to 'N/A' if empty)
     """
     try:
-        if os.path.exists(market_cap_csv_path):
-            df = pd.read_csv(market_cap_csv_path)
+        if os.path.exists(coin_data_csv_path):
+            df = pd.read_csv(coin_data_csv_path)
             df.columns = df.columns.str.strip()
             category_map = {}
             for idx, row in df.iterrows():
                 coin = row.get('coin', '')
-                category = row.get('category', '')
+                category = row.get('market_cap_category', '')
                 # Use 'N/A' if category is empty or NaN
                 category_map[coin] = category if (pd.notna(category) and str(category).strip()) else 'N/A'
-            logger.log_event(log_category="INFO", message=f"Loaded categories for {len(category_map)} coins", path=log_path)
+            logger.log_event(log_category="INFO", message=f"Loaded market cap categories for {len(category_map)} coins", path=log_path)
             return category_map
         else:
-            logger.log_event(log_category="WARNING", message=f"Market cap CSV not found at {market_cap_csv_path}. Using N/A for all categories.", path=log_path)
+            logger.log_event(log_category="WARNING", message=f"Coin data CSV not found at {coin_data_csv_path}. Using N/A for all categories.", path=log_path)
             return {}
     except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Error loading category data: {e}", path=log_path)
+        logger.log_event(log_category="ERROR", message=f"Error loading market cap category data: {e}", path=log_path)
         return {}
 
 
-def load_market_cap_data(market_cap_csv_path):
+def load_market_cap_data(coin_data_csv_path):
     """
-    Load market cap information from market_cap_data.csv
-    Returns dict mapping coin -> market_cap (float or None if empty)
+    Load market cap values from coin_data.csv
+    Returns dict mapping coin -> market_cap_value (float or None if empty)
     """
     try:
-        if os.path.exists(market_cap_csv_path):
-            df = pd.read_csv(market_cap_csv_path)
+        if os.path.exists(coin_data_csv_path):
+            df = pd.read_csv(coin_data_csv_path)
             df.columns = df.columns.str.strip()
             market_cap_map = {}
             for idx, row in df.iterrows():
                 coin = row.get('coin', '')
-                market_cap = row.get('market_cap', '')
+                market_cap = row.get('market_cap_value', '')
                 # Convert to float if not empty, otherwise None
                 if pd.notna(market_cap) and str(market_cap).strip():
                     try:
@@ -125,13 +124,13 @@ def load_market_cap_data(market_cap_csv_path):
                         market_cap_map[coin] = None
                 else:
                     market_cap_map[coin] = None
-            logger.log_event(log_category="INFO", message=f"Loaded market caps for {len([m for m in market_cap_map.values() if m is not None])} coins", path=log_path)
+            logger.log_event(log_category="INFO", message=f"Loaded market cap values for {len([m for m in market_cap_map.values() if m is not None])} coins", path=log_path)
             return market_cap_map
         else:
-            logger.log_event(log_category="WARNING", message=f"Market cap CSV not found at {market_cap_csv_path}. Using None for all market caps.", path=log_path)
+            logger.log_event(log_category="WARNING", message=f"Coin data CSV not found at {coin_data_csv_path}. Using None for all market cap values.", path=log_path)
             return {}
     except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Error loading market cap data: {e}", path=log_path)
+        logger.log_event(log_category="ERROR", message=f"Error loading market cap value data: {e}", path=log_path)
         return {}
 
 
@@ -508,12 +507,12 @@ def format_discord_message(top_oi_changes, previous_top20_symbols, limit=20):
 if __name__ == "__main__":
     print(f"Running {__file__}...")
 
-    # Load category and market cap data from market_cap_data.csv
-    category_data = load_category_data(market_cap_csv)
-    print(f"Loaded categories for {len(category_data)} coins")
+    # Load market cap category and market cap values from coin_data.csv
+    category_data = load_category_data(coin_data_csv)
+    print(f"Loaded market cap categories for {len(category_data)} coins")
     
-    market_cap_data = load_market_cap_data(market_cap_csv)
-    print(f"Loaded market caps for {len([m for m in market_cap_data.values() if m is not None])} coins")
+    market_cap_data = load_market_cap_data(coin_data_csv)
+    print(f"Loaded market cap values for {len([m for m in market_cap_data.values() if m is not None])} coins")
 
     # Get coin list
     coins = get_coins()
