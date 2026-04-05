@@ -3,10 +3,12 @@ import json
 import ssl
 import urllib.parse
 import urllib.request
+import urllib.error
 import csv
 import os
 import certifi
 import logger
+import time
 from dotenv import load_dotenv
 import boto3
 from io import BytesIO
@@ -74,92 +76,176 @@ def get_market_cap_data(coins):
     market_cap_data = {}
     context = ssl.create_default_context(cafile=certifi.where())
 
-    # Batch coins into groups of 100
-    batch_size = 100
-    batches = [coins[i : i + batch_size] for i in range(0, len(coins), batch_size)]
+    # Sanitize coins - only keep ASCII alphanumeric characters (CMC API requirement)
+    def is_valid_symbol(coin):
+        """Check if coin symbol contains only ASCII alphanumeric characters"""
+        # CMC API only accepts ASCII characters (A-Z, a-z, 0-9), not Unicode
+        return all(c.isascii() and c.isalnum() for c in coin)
+    
+    valid_coins = []
+    invalid_coins = []
+    for coin in coins:
+        # Remove USDT suffix for API, but keep the original for tracking
+        clean_coin = coin.replace("USDT", "")
+        if is_valid_symbol(clean_coin):
+            valid_coins.append(coin)
+        else:
+            invalid_coins.append(coin)
+            market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
+            logger.log_event(log_category="WARNING", message=f"Skipping coin '{coin}' - contains non-ASCII characters", path=log_path)
+    
+    if invalid_coins:
+        print(f"[WARNING] Skipped {len(invalid_coins)} coins with invalid characters: {', '.join(invalid_coins[:5])}{'...' if len(invalid_coins) > 5 else ''}")
 
-    print(f"Fetching market cap data for {len(coins)} coins...")
+    # Reduce batch size to keep URLs shorter (avoid 400 errors)
+    # CMC API has URL length limits, so we use 50 coins per batch instead of 100
+    batch_size = 50
+    batches = [valid_coins[i : i + batch_size] for i in range(0, len(valid_coins), batch_size)]
+
+    print(f"Fetching market cap data for {len(valid_coins)} valid coins ({len(invalid_coins)} skipped)...")
 
     for batch_num, batch in enumerate(batches, 1):
         print(f"Processing batch {batch_num}/{len(batches)} ({len(batch)} coins)...")
 
         # Create comma-separated symbol list (remove USDT suffix for CMC API)
+        # All symbols are already validated to be ASCII alphanumeric at this point
         symbols = ",".join([coin.replace("USDT", "") for coin in batch])
 
-        params = urllib.parse.urlencode(
-            {
-                "symbol": symbols,
-                "convert": "USD",
-            }
-        )
+        # Retry logic with exponential backoff
+        MAX_RETRIES = 5
+        base_delay = 2  # Start with 2 seconds
+        retry_count = 0
+        
+        while retry_count < MAX_RETRIES:
+            try:
+                # Use GET request with URL parameters (CMC API v2 supports this)
+                # Smaller batch size (50) keeps URL length within limits
+                params = urllib.parse.urlencode({
+                    "symbol": symbols,
+                    "convert": "USD",
+                })
 
-        try:
-            request = urllib.request.Request(
-                f"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?{params}",
-                headers={
-                    "Accept": "application/json",
-                    "X-CMC_PRO_API_KEY": CMC_API_KEY,
-                },
-            )
+                url = f"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?{params}"
+                
+                request = urllib.request.Request(
+                    url,
+                    headers={
+                        "Accept": "application/json",
+                        "X-CMC_PRO_API_KEY": CMC_API_KEY,
+                    },
+                )
 
-            with urllib.request.urlopen(request, context=context) as response:
-                data = json.load(response)
+                # Add 30-second timeout to prevent hanging
+                with urllib.request.urlopen(request, context=context, timeout=30) as response:
+                    data = json.load(response)
 
-            # Process response
-            if "data" in data:
-                for symbol_key, coin_data_list in data["data"].items():
-                    original_symbol = f"{symbol_key}USDT"
+                # Process response
+                if "data" in data:
+                    for symbol_key, coin_data_list in data["data"].items():
+                        original_symbol = f"{symbol_key}USDT"
 
-                    # Check if the list has data (API returns list of matches)
-                    if coin_data_list and len(coin_data_list) > 0:
-                        coin_data = coin_data_list[0]  # Get the first (best match)
+                        # Check if the list has data (API returns list of matches)
+                        if coin_data_list and len(coin_data_list) > 0:
+                            coin_data = coin_data_list[0]  # Get the first (best match)
 
-                        try:
-                            price = coin_data.get("quote", {}).get("USD", {}).get("price")
-                            circulating_supply = coin_data.get("circulating_supply", 0)
+                            try:
+                                price = coin_data.get("quote", {}).get("USD", {}).get("price")
+                                circulating_supply = coin_data.get("circulating_supply", 0)
 
-                            if price and circulating_supply:
-                                market_cap = price * circulating_supply
-                            else:
+                                if price and circulating_supply:
+                                    market_cap = price * circulating_supply
+                                else:
+                                    market_cap = None
+                            except (KeyError, TypeError):
                                 market_cap = None
-                        except (KeyError, TypeError):
-                            market_cap = None
 
-                        # Categorize market cap
-                        if market_cap is None:
+                            # Categorize market cap
+                            if market_cap is None:
+                                market_cap_data[original_symbol] = {
+                                    "market_cap": "N/A",
+                                    "category": "N/A"
+                                }
+                            else:
+                                market_cap_str = f"{market_cap:.2f}"
+                                if market_cap > 10_000_000_000:  # >10B
+                                    category = "Large Cap"
+                                elif market_cap >= 1_000_000_000:  # 1B-10B
+                                    category = "Mid Cap"
+                                else:  # <1B
+                                    category = "Small Cap"
+
+                                market_cap_data[original_symbol] = {
+                                    "market_cap": market_cap_str,
+                                    "category": category
+                                }
+                        else:
+                            # Empty list means coin not found in API
                             market_cap_data[original_symbol] = {
                                 "market_cap": "N/A",
                                 "category": "N/A"
                             }
-                        else:
-                            market_cap_str = f"{market_cap:.2f}"
-                            if market_cap > 10_000_000_000:  # >10B
-                                category = "Large Cap"
-                            elif market_cap >= 1_000_000_000:  # 1B-10B
-                                category = "Mid Cap"
-                            else:  # <1B
-                                category = "Small Cap"
+                
+                # Success - break out of retry loop
+                logger.log_event(log_category="INFO", message=f"Batch {batch_num} processed successfully", path=log_path)
+                break
 
-                            market_cap_data[original_symbol] = {
-                                "market_cap": market_cap_str,
-                                "category": category
-                            }
+            except urllib.error.HTTPError as e:
+                error_body = ""
+                if e.code == 400:  # Bad Request - log response body for debugging
+                    try:
+                        error_body = e.read().decode('utf-8')
+                        logger.log_event(log_category="DEBUG", message=f"API response body: {error_body}", path=log_path)
+                    except:
+                        pass
+                
+                if e.code == 429:  # Rate limit error
+                    retry_count += 1
+                    if retry_count < MAX_RETRIES:
+                        wait_time = base_delay * (2 ** (retry_count - 1))  # Exponential backoff
+                        logger.log_event(log_category="WARNING", message=f"Batch {batch_num}: Rate limited (429). Retry {retry_count}/{MAX_RETRIES} after {wait_time}s", path=log_path)
+                        print(f"  [RATE LIMITED] Batch {batch_num}: Waiting {wait_time}s before retry ({retry_count}/{MAX_RETRIES})...")
+                        time.sleep(wait_time)
                     else:
-                        # Empty list means coin not found in API
-                        market_cap_data[original_symbol] = {
-                            "market_cap": "N/A",
-                            "category": "N/A"
-                        }
+                        logger.log_event(log_category="ERROR", message=f"Batch {batch_num}: Failed after {MAX_RETRIES} retries due to rate limiting", path=log_path)
+                        print(f"  [ERROR] Batch {batch_num}: Failed after {MAX_RETRIES} retries - marking as N/A")
+                        for coin in batch:
+                            market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
+                        break
+                else:
+                    logger.log_event(log_category="ERROR", message=f"Batch {batch_num}: HTTP error {e.code}: {e.reason}. {error_body}", path=log_path)
+                    print(f"  [ERROR] Batch {batch_num}: HTTP {e.code} - {e.reason}")
+                    if error_body:
+                        print(f"    Response: {error_body[:200]}")
+                    for coin in batch:
+                        market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
+                    break
 
-        except Exception as e:
-            logger.log_event(log_category="ERROR", message=f"Error processing batch {batch_num}: {e}", path=log_path)
-            print(f"Error processing batch {batch_num}: {e}")
-            # Add N/A for all coins in this batch
-            for coin in batch:
-                market_cap_data[coin] = {
-                    "market_cap": "N/A",
-                    "category": "N/A"
-                }
+            except urllib.error.URLError as e:
+                retry_count += 1
+                if retry_count < MAX_RETRIES:
+                    wait_time = base_delay * (2 ** (retry_count - 1))
+                    logger.log_event(log_category="WARNING", message=f"Batch {batch_num}: Connection error. Retry {retry_count}/{MAX_RETRIES} after {wait_time}s: {e}", path=log_path)
+                    print(f"  [RETRY] Batch {batch_num}: Connection error, retrying in {wait_time}s ({retry_count}/{MAX_RETRIES})...")
+                    time.sleep(wait_time)
+                else:
+                    logger.log_event(log_category="ERROR", message=f"Batch {batch_num}: Failed after {MAX_RETRIES} retries - {e}", path=log_path)
+                    print(f"  [ERROR] Batch {batch_num}: Failed after {MAX_RETRIES} retries")
+                    for coin in batch:
+                        market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
+                    break
+
+            except Exception as e:
+                logger.log_event(log_category="ERROR", message=f"Batch {batch_num}: Unexpected error - {e}", path=log_path)
+                print(f"  [ERROR] Batch {batch_num}: {type(e).__name__}: {e}")
+                for coin in batch:
+                    market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
+                break
+
+        # Add delay between batch requests to respect API rate limits
+        if batch_num < len(batches):
+            delay = 1.0  # 1 second delay between batches (reduced from 1.5s since batches are now half the size)
+            print(f"  Waiting {delay}s before next batch...")
+            time.sleep(delay)
 
     logger.log_event(log_category="INFO", message=f"Successfully retrieved market cap data for {len(market_cap_data)} coins", path=log_path)
     return market_cap_data
