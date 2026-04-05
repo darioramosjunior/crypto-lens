@@ -18,10 +18,12 @@ load_dotenv()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
-coin_list_path = os.path.join(script_dir, "coin_list.txt")
+coin_data_csv = os.path.join(script_dir, "coin_data.csv")
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
 hourly_data_dir = os.path.join(script_dir, "hourly_data")
 market_cap_csv = os.path.join(script_dir, "market_cap_data.csv")
+prices_csv = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
+oi_changes_csv = os.path.join(script_dir, "oi_changes_1h.csv")
 
 BASE_URL = "https://fapi.binance.com/fapi/v1"
 CURRENT_OI_ENDPOINT = f"{BASE_URL}/openInterest"
@@ -43,17 +45,17 @@ if not os.getenv("OI_CHANGE_WEBHOOK"):
 
 def get_coins():
     """
-    Get the list of active coins before requesting data
+    Get the list of active coins from coin_data.csv
     :return: list[]
     """
     try:
-        with open(coin_list_path, 'r') as file:
-            coin_list = [line.strip() for line in file]
-
-        logger.log_event(log_category="INFO", message="Successfully retrieved coin list", path=log_path)
+        df = pd.read_csv(coin_data_csv)
+        df.columns = df.columns.str.strip()
+        coin_list = df['coin'].tolist()
+        logger.log_event(log_category="INFO", message=f"Successfully retrieved {len(coin_list)} coins from coin_data.csv", path=log_path)
         return coin_list
     except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to retrieve coin list. Error={e}", path=log_path)
+        logger.log_event(log_category="ERROR", message=f"Failed to retrieve coin list from coin_data.csv. Error={e}", path=log_path)
         return []
 
 
@@ -182,56 +184,88 @@ def save_current_top20(top_oi_changes):
         logger.log_event(log_category="ERROR", message=f"Failed to save current top 20. Error={e}", path=log_path)
 
 
+def save_oi_changes_to_csv(oi_changes):
+    """
+    Save all OI changes to oi_changes_1h.csv
+    :param oi_changes: list of all OI change records
+    """
+    try:
+        timestamp = datetime.now().isoformat()
+        records = []
+        for item in oi_changes:
+            records.append({
+                "symbol": item["symbol"],
+                "timestamp": timestamp,
+                "open_interest": item["current_oi"],
+                "previous_open_interest": item["previous_oi"],
+                "oi_change": item["change_percentage"],
+                "market_cap_category": item.get("category", "N/A")
+            })
+        
+        df = pd.DataFrame(records)
+        df.to_csv(oi_changes_csv, index=False)
+        logger.log_event(log_category="INFO", message=f"Saved {len(records)} OI changes to {oi_changes_csv}", path=log_path)
+    except Exception as e:
+        logger.log_event(log_category="ERROR", message=f"Failed to save OI changes to CSV. Error={e}", path=log_path)
+
+
 def get_hourly_price_data(symbols):
     """
-    Get current and previous hour price data from hourly_data CSVs
+    Get price change data from prices_1h.csv
     :param symbols: list of symbols to fetch price data for
-    :return: dict with symbol -> {current_price, previous_close}
+    :return: dict with symbol -> {price_change_percentage}
     """
     price_data = {}
     
-    for symbol in symbols:
-        try:
-            csv_path = os.path.join(hourly_data_dir, f"{symbol}.csv")
-            if not os.path.exists(csv_path):
+    try:
+        if not os.path.exists(prices_csv):
+            logger.log_event(
+                log_category="WARNING",
+                message=f"Prices CSV not found at {prices_csv}",
+                path=log_path
+            )
+            return {}
+        
+        df = pd.read_csv(prices_csv)
+        df.columns = df.columns.str.strip()
+        
+        for symbol in symbols:
+            try:
+                # Find the row for this symbol
+                symbol_data = df[df['symbol'] == symbol]
+                
+                if symbol_data.empty:
+                    logger.log_event(
+                        log_category="WARNING",
+                        message=f"No price data found for {symbol} in prices_1h.csv",
+                        path=log_path
+                    )
+                    continue
+                
+                price_change = float(symbol_data.iloc[0]['price_change'])
+                
+                price_data[symbol] = {
+                    "price_change_percentage": price_change
+                }
+                
                 logger.log_event(
-                    log_category="WARNING",
-                    message=f"Hourly data CSV not found for {symbol}",
+                    log_category="INFO",
+                    message=f"Successfully retrieved price change for {symbol}: {price_change:.2f}%",
+                    path=log_path
+                )
+            except Exception as e:
+                logger.log_event(
+                    log_category="ERROR",
+                    message=f"Failed to get price data for {symbol}. Error: {e}",
                     path=log_path
                 )
                 continue
-            
-            # Read CSV and get the last two rows
-            df = pd.read_csv(csv_path)
-            if len(df) < 2:
-                logger.log_event(
-                    log_category="WARNING",
-                    message=f"Insufficient data in CSV for {symbol} (need at least 2 rows)",
-                    path=log_path
-                )
-                continue
-            
-            # Get current price (last row close) and previous hour close (second-to-last row)
-            current_price = float(df.iloc[-1]['close'])
-            previous_close = float(df.iloc[-2]['close'])
-            
-            price_data[symbol] = {
-                "current_price": current_price,
-                "previous_close": previous_close
-            }
-            
-            logger.log_event(
-                log_category="INFO",
-                message=f"Successfully retrieved price data for {symbol}: current={current_price}, previous={previous_close}",
-                path=log_path
-            )
-        except Exception as e:
-            logger.log_event(
-                log_category="ERROR",
-                message=f"Failed to get price data for {symbol}. Error: {e}",
-                path=log_path
-            )
-            continue
+    except Exception as e:
+        logger.log_event(
+            log_category="ERROR",
+            message=f"Failed to read prices CSV. Error: {e}",
+            path=log_path
+        )
     
     return price_data
 
@@ -345,7 +379,7 @@ async def get_oi_data(symbols, max_concurrent=20):
         return dict(current_results), dict(historical_results)
 
 
-def calculate_oi_change_percentage(current_results, historical_results, price_data, category_data=None, market_cap_data=None):
+def calculate_oi_change_percentage(current_results, historical_results, price_data, category_data=None, market_cap_data=None, trend_category_data=None):
     """
     Calculate OI change percentage from previous hour
     Historical results come in chronological order: [oldest, newest]
@@ -355,6 +389,8 @@ def calculate_oi_change_percentage(current_results, historical_results, price_da
         category_data = {}
     if market_cap_data is None:
         market_cap_data = {}
+    if trend_category_data is None:
+        trend_category_data = {}
     
     oi_changes = []
 
@@ -377,13 +413,10 @@ def calculate_oi_change_percentage(current_results, historical_results, price_da
             # Calculate percentage change for OI
             change_percentage = ((current_oi - previous_oi) / previous_oi) * 100
 
-            # Calculate price change if available from CSV data
+            # Get price change from prices_1h.csv if available
             price_change_percentage = None
             if symbol in price_data:
-                current_price = price_data[symbol]["current_price"]
-                previous_close = price_data[symbol]["previous_close"]
-                if previous_close > 0:
-                    price_change_percentage = ((current_price - previous_close) / previous_close) * 100
+                price_change_percentage = price_data[symbol].get("price_change_percentage")
 
             # Get category (default to N/A if not found)
             category = category_data.get(symbol, "N/A")
@@ -420,7 +453,7 @@ def format_discord_message(top_oi_changes, previous_top20_symbols, limit=20):
     """
     message = "🔥 **Top 20 Coins by Open Interest Change (Last Hour)** 🔥\n\n"
     message += "```\n"
-    message += f"{'SYMBOL':<12} {'OI CHG %':<10} {'PRICE CHG %':<14} {'CATEGORY':<15} {'MARKET CAP':<15}\n"
+    message += f"{'SYMBOL':<12} {'OI CHG %':<10} {'PRICE CHG %':<15} {'CATEGORY':<12} {'MARKET CAP':<13}\n"
     message += "-" * 80 + "\n"
 
     for i, item in enumerate(top_oi_changes[:limit], 1):
@@ -439,24 +472,27 @@ def format_discord_message(top_oi_changes, previous_top20_symbols, limit=20):
         else:
             marker = "  "  # Regular spacing
 
-        # Format price change with emoji indicator
+        # Format price change with emoji indicator (single space between emoji and value)
         if price_change is not None:
             if price_change > 0:
-                price_str = f"📈 {price_change:>9.2f}%"
+                price_str = f"📈 {price_change:.2f}%"
             elif price_change < 0:
-                price_str = f"📉 {price_change:>9.2f}%"
+                price_str = f"📉 {price_change:.2f}%"
             else:
-                price_str = f"  {price_change:>9.2f}%"
+                price_str = f"  {price_change:.2f}%"
         else:
-            price_str = "N/A        "
+            price_str = "N/A"
+        
+        # Right-align price string
+        price_str = f"{price_str:>15}"
 
         # Truncate category if needed
-        cat_str = category[:13] if len(category) > 13 else category
+        cat_str = category[:10] if len(category) > 10 else category
         
         # Format market cap
         market_cap_str = format_market_cap(market_cap)
 
-        message += f"{marker} {symbol:<9} {change_pct:>8.2f}%  {price_str}  {cat_str:<15} {market_cap_str:>13}\n"
+        message += f"{marker} {symbol:<9} {change_pct:>8.2f}%  {price_str}  {cat_str:<12} {market_cap_str:>11}\n"
 
     message += "```\n"
     
@@ -494,39 +530,42 @@ if __name__ == "__main__":
 
     print(f"Fetched OI data for {len(current_oi)} symbols in {end - start:.2f} seconds.")
 
-    # Calculate OI change percentage (without price data first to identify top 20)
-    oi_changes = calculate_oi_change_percentage(current_oi, historical_oi, {}, category_data, market_cap_data)
+    # Get top 20 symbols first (before calculating price changes)
+    oi_changes_initial = calculate_oi_change_percentage(current_oi, historical_oi, {}, category_data, market_cap_data, {})
 
-    if not oi_changes:
+    if not oi_changes_initial:
         print("No OI change data available.")
         logger.log_event(log_category="WARNING", message="No OI change data calculated", path=log_path)
         sys.exit(0)
 
     # Get top 20 symbols
-    top_20_symbols = [item["symbol"] for item in oi_changes[:20]]
+    top_20_symbols = [item["symbol"] for item in oi_changes_initial[:20]]
     
-    # Fetch hourly price data for top 20 symbols only (efficient)
-    print(f"Fetching hourly price data for top 20 symbols...")
+    # Fetch price change data for top 20 symbols from prices_1h.csv
+    print(f"Fetching price change data for top 20 symbols...")
     price_data = get_hourly_price_data(top_20_symbols)
     
     # Recalculate OI changes with price data
-    oi_changes_with_prices = calculate_oi_change_percentage(current_oi, historical_oi, price_data, category_data, market_cap_data)
+    oi_changes_with_prices = calculate_oi_change_percentage(current_oi, historical_oi, price_data, category_data, market_cap_data, {})
     top_20_oi_changes = oi_changes_with_prices[:20]
 
     print(f"\nTop 20 coins by OI change:")
     for i, item in enumerate(top_20_oi_changes, 1):
         if item['price_change_percentage'] is not None:
             if item['price_change_percentage'] > 0:
-                price_str = f"📈 {item['price_change_percentage']:>8.2f}%"
+                price_str = f"📈 {item['price_change_percentage']:.2f}%"
             elif item['price_change_percentage'] < 0:
-                price_str = f"📉 {item['price_change_percentage']:>8.2f}%"
+                price_str = f"📉 {item['price_change_percentage']:.2f}%"
             else:
-                price_str = f"  {item['price_change_percentage']:>8.2f}%"
+                price_str = f"  {item['price_change_percentage']:.2f}%"
         else:
             price_str = "N/A"
         category = item.get("category", "N/A")
         market_cap_str = format_market_cap(item.get("market_cap"))
         print(f"{i:2}. {item['symbol']:<15} {item['change_percentage']:>8.2f}% | Price: {price_str} | Category: {category} | Market Cap: {market_cap_str}")
+
+    # Save all OI changes to CSV
+    save_oi_changes_to_csv(oi_changes_with_prices)
 
     # Get previous top 20 and identify new coins
     previous_top20_symbols = get_previous_top20()

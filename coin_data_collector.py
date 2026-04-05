@@ -28,6 +28,12 @@ S3_BUCKET_NAME = "data-portfolio-2026"
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 
+def is_valid_symbol(coin):
+    """Check if coin symbol contains only ASCII alphanumeric characters"""
+    # CMC API only accepts ASCII characters (A-Z, a-z, 0-9), not Unicode
+    return all(c.isascii() and c.isalnum() for c in coin)
+
+
 def get_coins_from_binance():
     """
     Get all active futures coins from Binance
@@ -47,15 +53,24 @@ def get_coins_from_binance():
             if market['contract'] and market['linear'] and market['quote'] == 'USDT' and market['active']
         ]
 
-        # Clean up coin symbols
+        # Clean up coin symbols and filter out unicode characters
         coins = []
+        invalid_coins = []
         for symbol in usdt_perps:
             formatted_coin = symbol.replace("/USDT:", "")
             if "-" not in formatted_coin:
-                coins.append(formatted_coin)
+                # Only keep coins with valid ASCII alphanumeric characters
+                clean_coin = formatted_coin.replace("USDT", "")
+                if is_valid_symbol(clean_coin):
+                    coins.append(formatted_coin)
+                else:
+                    invalid_coins.append(formatted_coin)
+
+        if invalid_coins:
+            logger.log_event(log_category="WARNING", message=f"Filtered out {len(invalid_coins)} coins with unicode characters: {invalid_coins[:10]}", path=log_path)
 
         coin_count = len(coins)
-        logger.log_event(log_category="INFO", message=f"Successfully retrieved {coin_count} coins from Binance", path=log_path)
+        logger.log_event(log_category="INFO", message=f"Successfully retrieved {coin_count} valid coins from Binance ({len(invalid_coins)} filtered out)", path=log_path)
         return coins
 
     except Exception as e:
@@ -76,33 +91,12 @@ def get_market_cap_data(coins):
     market_cap_data = {}
     context = ssl.create_default_context(cafile=certifi.where())
 
-    # Sanitize coins - only keep ASCII alphanumeric characters (CMC API requirement)
-    def is_valid_symbol(coin):
-        """Check if coin symbol contains only ASCII alphanumeric characters"""
-        # CMC API only accepts ASCII characters (A-Z, a-z, 0-9), not Unicode
-        return all(c.isascii() and c.isalnum() for c in coin)
-    
-    valid_coins = []
-    invalid_coins = []
-    for coin in coins:
-        # Remove USDT suffix for API, but keep the original for tracking
-        clean_coin = coin.replace("USDT", "")
-        if is_valid_symbol(clean_coin):
-            valid_coins.append(coin)
-        else:
-            invalid_coins.append(coin)
-            market_cap_data[coin] = {"market_cap": "N/A", "category": "N/A"}
-            logger.log_event(log_category="WARNING", message=f"Skipping coin '{coin}' - contains non-ASCII characters", path=log_path)
-    
-    if invalid_coins:
-        print(f"[WARNING] Skipped {len(invalid_coins)} coins with invalid characters: {', '.join(invalid_coins[:5])}{'...' if len(invalid_coins) > 5 else ''}")
-
-    # Reduce batch size to keep URLs shorter (avoid 400 errors)
-    # CMC API has URL length limits, so we use 50 coins per batch instead of 100
+    # All coins at this point are already validated to be ASCII alphanumeric
+    # So we can proceed directly with batching
     batch_size = 50
-    batches = [valid_coins[i : i + batch_size] for i in range(0, len(valid_coins), batch_size)]
+    batches = [coins[i : i + batch_size] for i in range(0, len(coins), batch_size)]
 
-    print(f"Fetching market cap data for {len(valid_coins)} valid coins ({len(invalid_coins)} skipped)...")
+    print(f"Fetching market cap data for {len(coins)} coins...")
 
     for batch_num, batch in enumerate(batches, 1):
         print(f"Processing batch {batch_num}/{len(batches)} ({len(batch)} coins)...")
