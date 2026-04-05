@@ -6,11 +6,13 @@ import time
 import json
 import pandas as pd
 from datetime import datetime, timedelta
+from io import BytesIO
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import aiohttp
+import boto3
 from discord_integrator import send_to_discord
 from dotenv import load_dotenv
 
@@ -20,9 +22,12 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
 coin_data_csv = os.path.join(script_dir, "coin_data.csv")
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
-hourly_data_dir = os.path.join(script_dir, "hourly_data")
 prices_csv = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
 oi_changes_csv = os.path.join(script_dir, "oi_changes_1h.csv")
+
+# AWS S3 configuration
+S3_BUCKET_NAME = "data-portfolio-2026"
+AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 BASE_URL = "https://fapi.binance.com/fapi/v1"
 CURRENT_OI_ENDPOINT = f"{BASE_URL}/openInterest"
@@ -185,7 +190,7 @@ def save_current_top20(top_oi_changes):
 
 def save_oi_changes_to_csv(oi_changes):
     """
-    Save all OI changes to oi_changes_1h.csv
+    Save all OI changes to oi_changes_1h.csv locally and upload to S3
     :param oi_changes: list of all OI change records
     """
     try:
@@ -202,8 +207,14 @@ def save_oi_changes_to_csv(oi_changes):
             })
         
         df = pd.DataFrame(records)
+        
+        # Save locally
         df.to_csv(oi_changes_csv, index=False)
         logger.log_event(log_category="INFO", message=f"Saved {len(records)} OI changes to {oi_changes_csv}", path=log_path)
+        print(f"[OK] Saved oi_changes_1h.csv locally to {oi_changes_csv}")
+        
+        # Upload to S3
+        upload_dataframe_to_s3(df, "oi-change/oi_changes_1h.csv")
     except Exception as e:
         logger.log_event(log_category="ERROR", message=f"Failed to save OI changes to CSV. Error={e}", path=log_path)
 
@@ -267,6 +278,33 @@ def get_hourly_price_data(symbols):
         )
     
     return price_data
+
+
+def upload_dataframe_to_s3(dataframe, s3_key):
+    """
+    Upload DataFrame directly to S3 as CSV
+    :param dataframe: pandas DataFrame to upload
+    :param s3_key: S3 key path (e.g., "oi-change/oi_changes_1h.csv")
+    """
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3', region_name=AWS_REGION)
+        
+        # Convert DataFrame to CSV in memory
+        csv_buffer = BytesIO()
+        dataframe.to_csv(csv_buffer, index=False)
+        csv_buffer.seek(0)
+        
+        # Upload to S3
+        s3_client.upload_fileobj(csv_buffer, S3_BUCKET_NAME, s3_key)
+        logger.log_event(log_category="INFO", message=f"Successfully uploaded {s3_key} to S3 bucket {S3_BUCKET_NAME}", path=log_path)
+        print(f"[OK] Uploaded {s3_key} to S3")
+        return True
+    
+    except Exception as e:
+        logger.log_event(log_category="ERROR", message=f"Failed to upload {s3_key} to S3. Error: {e}", path=log_path)
+        print(f"[ERROR] Failed to upload {s3_key} to S3: {e}")
+        return False
 
 
 async def fetch_current_oi(session, symbol):
@@ -587,3 +625,5 @@ if __name__ == "__main__":
         path=log_path
     )
     print("Done!")
+    print(f"  - OI changes uploaded to S3: s3://{S3_BUCKET_NAME}/oi-change/oi_changes_1h.csv")
+    print(f"  - OI changes saved locally to: {oi_changes_csv}")
