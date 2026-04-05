@@ -148,7 +148,7 @@ def calculate_price_changes(in_memory_data):
         price_changes_df = price_changes_df[['symbol', 'timestamp', 'close', 'previous_close', 'price_change_1h']]
         
         # Save directly to S3
-        upload_dataframe_to_s3(price_changes_df, "price_change/prices_1h.csv")
+        upload_dataframe_to_s3(price_changes_df, "price-change/prices_1h.csv")
         logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes to S3", path=log_path)
         return price_changes_df
     except Exception as e:
@@ -249,7 +249,7 @@ def calculate_trend_counts(indicators_data):
         trend_df = trend_df.sort_index()
         
         # Save directly to S3
-        upload_dataframe_to_s3(trend_df, "market_pulse/coin_trend_1h.csv")
+        upload_dataframe_to_s3(trend_df, "market-pulse/coin_trend_1h.csv")
         logger.log_event(log_category="INFO", message=f"Successfully saved trend counts to S3", path=log_path)
         return trend_df
     except Exception as e:
@@ -376,7 +376,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
     """
     Upload DataFrame directly to S3 as CSV without saving locally
     :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path (e.g., "market_pulse/coin_trend_1h.csv" or "price_change/prices_1h.csv")
+    :param s3_key: S3 key path (e.g., "market-pulse/coin_trend_1h.csv" or "price-change/prices_1h.csv")
     """
     try:
         # Initialize S3 client
