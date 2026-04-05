@@ -194,7 +194,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
     """
     Upload DataFrame directly to S3 as CSV without saving locally
     :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path (e.g., "coin_data/coin_data.csv")
+    :param s3_key: S3 key path (e.g., "coin-data/coin_data.csv")
     """
     try:
         import pandas as pd
@@ -243,6 +243,6 @@ if __name__ == "__main__":
     print("\nStep 4: Uploading coin data to S3...")
     import pandas as pd
     df_for_s3 = pd.read_csv(coin_data_output_path)
-    upload_dataframe_to_s3(df_for_s3, "coin_data/coin_data.csv")
+    upload_dataframe_to_s3(df_for_s3, "coin-data/coin_data.csv")
 
     print("\n[OK] Process completed successfully!")

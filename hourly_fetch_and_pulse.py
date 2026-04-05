@@ -14,7 +14,7 @@ if sys.platform.startswith('win'):
 
 import aiohttp
 import time
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from discord_integrator import upload_to_discord
 from dotenv import load_dotenv
 import boto3
@@ -148,7 +148,7 @@ def calculate_price_changes(in_memory_data):
         price_changes_df = price_changes_df[['symbol', 'timestamp', 'close', 'previous_close', 'price_change_1h']]
         
         # Save directly to S3
-        upload_dataframe_to_s3(price_changes_df, "price_change/prices_1h.csv")
+        upload_dataframe_to_s3(price_changes_df, "price-change/prices_1h.csv")
         logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes to S3", path=log_path)
         return price_changes_df
     except Exception as e:
@@ -376,7 +376,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
     """
     Upload DataFrame directly to S3 as CSV without saving locally
     :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path (e.g., "market_pulse/coin_trend_1h.csv" or "price-change/prices_1h.csv")
+    :param s3_key: S3 key path (e.g., "market-pulse/coin_trend_1h.csv" or "price-change/prices_1h.csv")
     """
     try:
         # Initialize S3 client
@@ -461,7 +461,7 @@ if __name__ == "__main__":
             print(f"✗ Failed to upload RSI sentiment chart: {e}")
     
     print("\n✓ Process completed successfully!")
-    print(f"  - Price changes uploaded to S3: s3://{S3_BUCKET_NAME}/price_change/prices_1h.csv")
-    print(f"  - Trend counts uploaded to S3: s3://{S3_BUCKET_NAME}/market_pulse/coin_trend_1h.csv")
+    print(f"  - Price changes uploaded to S3: s3://{S3_BUCKET_NAME}/price-change/prices_1h.csv")
+    print(f"  - Trend counts uploaded to S3: s3://{S3_BUCKET_NAME}/market-pulse/coin_trend_1h.csv")
     print(f"  - Market pulse chart saved to: {market_pulse_image_path}")
     print(f"  - RSI sentiment chart saved to: {rsi_sentiment_image_path}")
