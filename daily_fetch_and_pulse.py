@@ -8,6 +8,8 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 from scipy.stats import skew
 from io import BytesIO
+from datetime import datetime
+from itertools import islice
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -15,33 +17,32 @@ if sys.platform.startswith('win'):
 import aiohttp
 import time
 import pandas_ta as ta
-from discord_integrator import upload_to_discord
+from discord_integrator import send_to_discord, upload_to_discord
 from dotenv import load_dotenv
 import boto3
 
 load_dotenv()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
+log_path = os.path.join(script_dir, "logs", "daily_fetch_and_pulse_log.txt")
 coin_data_path = os.path.join(script_dir, "coin_data.csv")
-market_pulse_image_path = os.path.join(script_dir, "hourly_market_pulse", "market_pulse.png")
-rsi_sentiment_image_path = os.path.join(script_dir, "hourly_market_pulse", "rsi_sentiment.png")
-prices_1h_path = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
-trend_1h_path = os.path.join(script_dir, "hourly_market_pulse", "coin_trend_1h.csv")
-
-# Read webhook from environment
-discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK", "https://discord.com/api/webhooks/1369672316887367761/zlxHjxikEEhSOK-TcRmz37jH-2kVl8NAiB_BIMdXd0TAco9DnfI5MYGa8Nuuy34poarQ")
-if not os.getenv("MARKET_PULSE_WEBHOOK"):
-    logger.log_event(log_category="WARNING", message="MARKET_PULSE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting MARKET_PULSE_WEBHOOK in .env or CI secrets.", path=log_path)
+prices_1d_path = os.path.join(script_dir, "daily_market_pulse", "prices_1d.csv")
+trend_1d_path = os.path.join(script_dir, "daily_market_pulse", "coin_trend_1d.csv")
+market_pulse_image_path = os.path.join(script_dir, "daily_market_pulse", "market_pulse.png")
 
 # AWS S3 configuration
 S3_BUCKET_NAME = "data-portfolio-2026"
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
+# Discord webhook
+discord_webhook_url = os.getenv("DAY_CHANGE_WEBHOOK", "https://discord.com/api/webhooks/1375363041599950912/3vx1qI7OQAoIwz4TFV4hhwiK1uIZkr_vu3peoBvn4PO0YpF8z4yN410HC9kJkD4NhSWH")
+if not os.getenv("DAY_CHANGE_WEBHOOK"):
+    logger.log_event(log_category="WARNING", message="DAY_CHANGE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting DAY_CHANGE_WEBHOOK in .env or CI secrets.", path=log_path)
+
 BASE_URL = "https://fapi.binance.com/fapi/v1/klines"
-INTERVAL = "1h"
+INTERVAL = "1d"
 LIMIT = 200
-RATE_LIMIT = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
+RATE_LIMIT = 1000 / 60
 
 
 def get_coins():
@@ -145,75 +146,6 @@ def parse_raw_data_to_dataframe(symbol, raw_data):
         return None
 
 
-def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_cap_categories):
-    """
-    Calculate hourly price changes with trend and market cap categories
-    :param in_memory_data: Dictionary {symbol: DataFrame}
-    :param indicators_data: Dictionary {symbol: DataFrame} with indicators
-    :param market_cap_categories: dict mapping coin -> market_cap_category
-    :return: DataFrame with symbol, timestamp, close, previous_close, price_change, trend_category, market_cap_category
-    """
-    price_changes = []
-    
-    try:
-        for symbol, df in in_memory_data.items():
-            df_sorted = df.sort_values('timestamp').copy()
-            
-            if len(df_sorted) < 2:
-                continue
-            
-            # Get latest data
-            latest_row = df_sorted.iloc[-1]
-            previous_row = df_sorted.iloc[-2]
-            
-            latest_close = latest_row['close']
-            previous_close = previous_row['close']
-            latest_timestamp = latest_row['timestamp']
-            
-            # Calculate price change
-            if pd.notna(latest_close) and pd.notna(previous_close) and previous_close != 0:
-                price_change = ((latest_close - previous_close) / previous_close * 100)
-            else:
-                price_change = 0.0
-            
-            # Get latest trend category
-            trend_category = 'N/A'
-            if symbol in indicators_data:
-                indicator_df = indicators_data[symbol]
-                if len(indicator_df) > 0:
-                    latest_indicator = indicator_df.iloc[-1]
-                    trend_category = determine_trend(latest_indicator)
-            
-            # Get market cap category
-            market_cap_category = market_cap_categories.get(symbol, 'N/A')
-            
-            price_changes.append({
-                'symbol': symbol,
-                'timestamp': latest_timestamp,
-                'close': latest_close,
-                'previous_close': previous_close,
-                'price_change': price_change,
-                'trend_category': trend_category,
-                'market_cap_category': market_cap_category
-            })
-        
-        price_changes_df = pd.DataFrame(price_changes)
-        
-        # Save locally
-        os.makedirs(os.path.dirname(prices_1h_path), exist_ok=True)
-        price_changes_df.to_csv(prices_1h_path, index=False)
-        logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes locally to {prices_1h_path}", path=log_path)
-        print(f"[OK] Saved prices_1h.csv locally to {prices_1h_path}")
-        
-        # Save directly to S3
-        upload_dataframe_to_s3(price_changes_df, "price-change/prices_1h.csv")
-        logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes to S3", path=log_path)
-        return price_changes_df
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to calculate price changes. Error: {e}", path=log_path)
-        return None
-
-
 def calculate_indicators_in_memory(in_memory_data):
     """
     Calculate indicators for all symbols and store in memory
@@ -227,7 +159,6 @@ def calculate_indicators_in_memory(in_memory_data):
             try:
                 df_sorted = df.sort_values('timestamp').copy()
                 df_sorted['timestamp'] = pd.to_datetime(df_sorted['timestamp'])
-                df_sorted['date_only'] = df_sorted['timestamp'].dt.date
                 df_sorted.set_index('timestamp', inplace=True)
                 
                 close = df_sorted['close']
@@ -235,9 +166,6 @@ def calculate_indicators_in_memory(in_memory_data):
                 df_sorted['sma50'] = close.rolling(window=50).mean()
                 df_sorted['sma100'] = close.rolling(window=100).mean()
                 df_sorted['rsi14'] = ta.rsi(close, length=14)
-                
-                day_open = df_sorted.groupby('date_only')['open'].transform('first')
-                df_sorted['day_change_percent'] = ((df_sorted['close'] - day_open) / day_open) * 100
                 
                 volume = df_sorted['volume']
                 df_sorted['volume_sma20'] = volume.rolling(window=20).mean()
@@ -307,13 +235,13 @@ def calculate_trend_counts(indicators_data):
         trend_df = trend_df.sort_index()
         
         # Save locally
-        os.makedirs(os.path.dirname(trend_1h_path), exist_ok=True)
-        trend_df.to_csv(trend_1h_path)
-        logger.log_event(log_category="INFO", message=f"Successfully saved trend counts locally to {trend_1h_path}", path=log_path)
-        print(f"[OK] Saved coin_trend_1h.csv locally to {trend_1h_path}")
+        os.makedirs(os.path.dirname(trend_1d_path), exist_ok=True)
+        trend_df.to_csv(trend_1d_path)
+        logger.log_event(log_category="INFO", message=f"Successfully saved trend counts locally to {trend_1d_path}", path=log_path)
+        print(f"[OK] Saved coin_trend_1d.csv locally to {trend_1d_path}")
         
         # Save directly to S3
-        upload_dataframe_to_s3(trend_df, "market-pulse/coin_trend_1h.csv")
+        upload_dataframe_to_s3(trend_df, "market-pulse/coin_trend_1d.csv")
         logger.log_event(log_category="INFO", message=f"Successfully saved trend counts to S3", path=log_path)
         return trend_df
     except Exception as e:
@@ -321,126 +249,84 @@ def calculate_trend_counts(indicators_data):
         return None
 
 
-def calculate_percentage(numerator, denominator):
-    """Calculate percentage between two numbers"""
-    if denominator == 0:
-        return "0.00 %"
-    result = numerator / denominator
-    percentage = result * 100
-    return "{:.2f} %".format(percentage)
-
-
-def generate_market_pulse_chart(trend_df):
+def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_cap_categories):
     """
-    Generate market pulse visualization chart
-    :param trend_df: DataFrame with trend counts
+    Calculate daily price changes for all symbols and save directly to S3
+    :param in_memory_data: Dictionary {symbol: DataFrame}
+    :param indicators_data: Dictionary {symbol: DataFrame} with indicators
+    :param market_cap_categories: dict mapping coin -> market_cap_category
+    :return: DataFrame with symbol, timestamp, close, previous_close, price_change, trend_category, market_cap_category
     """
-    try:
-        # Get last 100 rows for plotting
-        df_plot = trend_df.sort_index().tail(100).reset_index()
-        
-        if len(df_plot) == 0:
-            logger.log_event(log_category="WARNING", message="No data available to plot market pulse", path=log_path)
-            return False
-        
-        latest = df_plot.iloc[-1]
-        total = int(latest['uptrend'] + latest['pullback'] + latest['downtrend'] + latest['reversal-down'] + latest['reversal-up'] + latest['uncategorized'])
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(market_pulse_image_path), exist_ok=True)
-        
-        # Plot using matplotlib
-        plt.figure(figsize=(12, 6))
-        plt.plot(df_plot['timestamp'], df_plot['uptrend'], label=f"Uptrend - {int(latest['uptrend'])} ({calculate_percentage(latest['uptrend'], total)})", color='green')
-        plt.plot(df_plot['timestamp'], df_plot['pullback'], label=f"Pullback - {int(latest['pullback'])} ({calculate_percentage(latest['pullback'], total)})", color='yellow')
-        plt.plot(df_plot['timestamp'], df_plot['downtrend'], label=f"Downtrend - {int(latest['downtrend'])} ({calculate_percentage(latest['downtrend'], total)})", color='red')
-        plt.plot(df_plot['timestamp'], df_plot['reversal-down'], label=f"Reversing down - {int(latest['reversal-down'])} ({calculate_percentage(latest['reversal-down'], total)})", color='orange')
-        plt.plot(df_plot['timestamp'], df_plot['reversal-up'], label=f"Reversing up - {int(latest['reversal-up'])} ({calculate_percentage(latest['reversal-up'], total)})", color='blue')
-        plt.plot(df_plot['timestamp'], df_plot['uncategorized'], label=f"Uncategorized - {int(latest['uncategorized'])} ({calculate_percentage(latest['uncategorized'], total)})", color='gray')
-        
-        plt.title('Hourly Market Pulse')
-        plt.xlabel('Timestamp')
-        plt.ylabel('Number of Symbols')
-        plt.xticks(rotation=45)
-        plt.legend(loc='upper left')
-        plt.tight_layout()
-        
-        # Save to PNG
-        plt.savefig(market_pulse_image_path)
-        plt.close()
-        
-        logger.log_event(log_category="INFO", message=f"Successfully saved market pulse chart to {market_pulse_image_path}", path=log_path)
-        return True
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to generate market pulse chart. Error: {e}", path=log_path)
-        return False
-
-
-def generate_rsi_sentiment_chart(indicators_data):
-    """
-    Generate RSI sentiment visualization chart
-    :param indicators_data: Dictionary {symbol: DataFrame}
-    """
-    rsi_values = []
+    price_changes = []
+    day_change_dict = {}
     
     try:
-        # Extract latest RSI values for each symbol
-        for symbol, df in indicators_data.items():
-            if len(df) > 0 and 'rsi14' in df.columns:
-                last_row = df.iloc[-1]
-                if pd.notna(last_row['rsi14']):
-                    rsi_values.append(last_row['rsi14'])
+        for symbol, df in in_memory_data.items():
+            df_sorted = df.sort_values('timestamp').copy()
+            
+            if len(df_sorted) < 2:
+                continue
+            
+            # Get latest data
+            latest_row = df_sorted.iloc[-1]
+            previous_row = df_sorted.iloc[-2]
+            
+            latest_close = latest_row['close']
+            previous_close = previous_row['close']
+            latest_timestamp = latest_row['timestamp']
+            
+            # Calculate price change
+            if pd.notna(latest_close) and pd.notna(previous_close) and previous_close != 0:
+                price_change = ((latest_close - previous_close) / previous_close * 100)
+                day_change_dict[symbol] = round(float(price_change), 2)
+            else:
+                price_change = 0.0
+                day_change_dict[symbol] = 0.0
+            
+            # Get latest trend category
+            trend_category = 'N/A'
+            if symbol in indicators_data:
+                indicator_df = indicators_data[symbol]
+                if len(indicator_df) > 0:
+                    latest_indicator = indicator_df.iloc[-1]
+                    trend_category = determine_trend(latest_indicator)
+            
+            # Get market cap category
+            market_cap_category = market_cap_categories.get(symbol, 'N/A')
+            
+            price_changes.append({
+                'symbol': symbol,
+                'timestamp': latest_timestamp,
+                'close': latest_close,
+                'previous_close': previous_close,
+                'price_change': price_change,
+                'trend_category': trend_category,
+                'market_cap_category': market_cap_category
+            })
         
-        if len(rsi_values) == 0:
-            logger.log_event(log_category="WARNING", message="No RSI values available for sentiment chart", path=log_path)
-            return False
+        price_changes_df = pd.DataFrame(price_changes)
         
-        # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(rsi_sentiment_image_path), exist_ok=True)
+        # Save locally
+        os.makedirs(os.path.dirname(prices_1d_path), exist_ok=True)
+        price_changes_df.to_csv(prices_1d_path, index=False)
+        logger.log_event(log_category="INFO", message=f"Successfully saved daily price changes locally to {prices_1d_path}", path=log_path)
+        print(f"[OK] Saved prices_1d.csv locally to {prices_1d_path}")
         
-        # Calculate statistics
-        mean_rsi = np.mean(rsi_values)
-        median_rsi = np.median(rsi_values)
-        rsi_arr = np.array(rsi_values)
-        rsi_skew = skew(rsi_arr)
+        # Save directly to S3
+        upload_dataframe_to_s3(price_changes_df, "price-change/prices_1d.csv")
+        logger.log_event(log_category="INFO", message=f"Successfully saved daily price changes to S3", path=log_path)
         
-        if rsi_skew < -0.5:
-            sentiment = "Bullish"
-        elif rsi_skew > 0.5:
-            sentiment = "Bearish"
-        else:
-            sentiment = "Neutral"
-        
-        # Create histogram
-        plt.figure(figsize=(12, 6))
-        plt.hist(rsi_values, bins=30, color="green", edgecolor="white", alpha=0.7)
-        
-        plt.axvline(70, color="red", linestyle="--", linewidth=0.5, label="Overbought (70)")
-        plt.axvline(30, color="green", linestyle="--", linewidth=0.5, label="Oversold (30)")
-        plt.axvline(50, color="gray", linestyle="--", linewidth=0.5, label="Neutral (50)")
-        plt.axvline(mean_rsi, color="blue", linestyle="-.", linewidth=1, label=f"Mean RSI = {mean_rsi:.2f}")
-        plt.axvline(median_rsi, color="purple", linestyle="-.", linewidth=1, label=f"Median RSI = {median_rsi:.2f}")
-        
-        plt.title(f"Hourly Market Sentiment: {sentiment} (Skew = {rsi_skew:.2f})")
-        plt.xlabel("RSI(14)")
-        plt.ylabel("Number of Coins")
-        plt.legend()
-        
-        plt.savefig(rsi_sentiment_image_path)
-        plt.close()
-        
-        logger.log_event(log_category="INFO", message=f"Successfully saved RSI sentiment chart to {rsi_sentiment_image_path}", path=log_path)
-        return True
+        return price_changes_df, day_change_dict
     except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to generate RSI sentiment chart. Error: {e}", path=log_path)
-        return False
+        logger.log_event(log_category="ERROR", message=f"Failed to calculate price changes. Error: {e}", path=log_path)
+        return None, {}
 
 
 def upload_dataframe_to_s3(dataframe, s3_key):
     """
     Upload DataFrame directly to S3 as CSV without saving locally
     :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path (e.g., "market-pulse/coin_trend_1h.csv" or "price-change/prices_1h.csv")
+    :param s3_key: S3 key path
     """
     try:
         # Initialize S3 client
@@ -463,6 +349,88 @@ def upload_dataframe_to_s3(dataframe, s3_key):
         return False
 
 
+def sort_gainers_losers(day_change_dict):
+    """
+    Sort coins by price change to get gainers and losers
+    :param day_change_dict: dict mapping coin -> price_change_percent
+    :return: tuple of (sorted_gainers, sorted_losers)
+    """
+    sorted_gainers = dict(sorted(day_change_dict.items(), key=lambda item: item[1], reverse=True))
+    sorted_losers = dict(sorted(day_change_dict.items(), key=lambda item: item[1], reverse=False))
+    return sorted_gainers, sorted_losers
+
+
+def calculate_percentage(numerator, denominator):
+    """Calculate percentage between two numbers"""
+    if denominator == 0:
+        return "0.00 %"
+    result = numerator / denominator
+    percentage = result * 100
+    return "{:.2f} %".format(percentage)
+
+
+def generate_market_pulse_chart(trend_df):
+    """
+    Generate daily market pulse visualization chart
+    :param trend_df: DataFrame with trend counts
+    """
+    try:
+        # Get last 100 rows for plotting (same as hourly)
+        df_plot = trend_df.sort_index().tail(100).reset_index()
+        
+        if len(df_plot) == 0:
+            logger.log_event(log_category="WARNING", message="No data available to plot daily market pulse", path=log_path)
+            return False
+        
+        latest = df_plot.iloc[-1]
+        total = int(latest['uptrend'] + latest['pullback'] + latest['downtrend'] + latest['reversal-down'] + latest['reversal-up'] + latest['uncategorized'])
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(market_pulse_image_path), exist_ok=True)
+        
+        # Plot using matplotlib (same formatting as hourly)
+        plt.figure(figsize=(12, 6))
+        plt.plot(df_plot['timestamp'], df_plot['uptrend'], label=f"Uptrend - {int(latest['uptrend'])} ({calculate_percentage(latest['uptrend'], total)})", color='green')
+        plt.plot(df_plot['timestamp'], df_plot['pullback'], label=f"Pullback - {int(latest['pullback'])} ({calculate_percentage(latest['pullback'], total)})", color='yellow')
+        plt.plot(df_plot['timestamp'], df_plot['downtrend'], label=f"Downtrend - {int(latest['downtrend'])} ({calculate_percentage(latest['downtrend'], total)})", color='red')
+        plt.plot(df_plot['timestamp'], df_plot['reversal-down'], label=f"Reversing down - {int(latest['reversal-down'])} ({calculate_percentage(latest['reversal-down'], total)})", color='orange')
+        plt.plot(df_plot['timestamp'], df_plot['reversal-up'], label=f"Reversing up - {int(latest['reversal-up'])} ({calculate_percentage(latest['reversal-up'], total)})", color='blue')
+        plt.plot(df_plot['timestamp'], df_plot['uncategorized'], label=f"Uncategorized - {int(latest['uncategorized'])} ({calculate_percentage(latest['uncategorized'], total)})", color='gray')
+        
+        plt.title('Daily Market Pulse')
+        plt.xlabel('Timestamp')
+        plt.ylabel('Number of Symbols')
+        plt.xticks(rotation=45)
+        plt.legend(loc='upper left')
+        plt.tight_layout()
+        
+        # Save to PNG
+        plt.savefig(market_pulse_image_path)
+        plt.close()
+        
+        logger.log_event(log_category="INFO", message=f"Successfully saved daily market pulse chart to {market_pulse_image_path}", path=log_path)
+        print(f"[OK] Saved market_pulse.png to {market_pulse_image_path}")
+        return True
+    except Exception as e:
+        logger.log_event(log_category="ERROR", message=f"Failed to generate daily market pulse chart. Error: {e}", path=log_path)
+        return False
+
+
+def format_message(input_dict, market_cap_categories, gainers=True):
+    """
+    Format message for Discord with top gainers or losers
+    """
+    title = "===== TOP GAINERS =====" if gainers else "===== TOP LOSERS ====="
+    now = datetime.now()
+    
+    message = f"{now}\n{title}\n"
+    for coin, percent_change in input_dict.items():
+        category = market_cap_categories.get(coin, 'N/A')
+        message += f"{coin} - {percent_change}% [{category}]\n"
+    
+    return message
+
+
 if __name__ == "__main__":
     print(f"Running {__file__}...")
     
@@ -472,19 +440,19 @@ if __name__ == "__main__":
         print("No coins to process. Exiting.")
         sys.exit(1)
     
-    print(f"[OK] Retrieved {len(coins)} coins")
+    print(f"\n[OK] Retrieved {len(coins)} coins")
     
     # Step 2: Load market cap categories
     market_cap_categories = load_market_cap_categories()
     
-    # Step 3: Fetch OHLCV data asynchronously and store in memory
-    print(f"\nFetching OHLCV data for {len(coins)} symbols...")
+    # Step 3: Fetch daily data asynchronously
+    print(f"\nFetching daily OHLCV data for {len(coins)} symbols...")
     start = time.time()
     raw_results = asyncio.run(get_coin_data(coins, max_concurrent=20))
     end = time.time()
     print(f"Fetched {len(raw_results)} symbols in {end - start:.2f} seconds.")
     
-    # Step 4: Parse raw data into DataFrames and keep in memory
+    # Step 4: Parse raw data into DataFrames
     print("Parsing data into DataFrames...")
     in_memory_data = {}
     for symbol, raw_data in raw_results.items():
@@ -492,45 +460,53 @@ if __name__ == "__main__":
         if df is not None:
             in_memory_data[symbol] = df
     
-    print(f"Successfully parsed {len(in_memory_data)} symbols.")
+    print(f"[OK] Successfully parsed {len(in_memory_data)} symbols.")
     
     # Step 5: Calculate indicators in memory
     print("Calculating indicators...")
     indicators_data = calculate_indicators_in_memory(in_memory_data)
     
-    # Step 6: Calculate price changes with trend and save directly to S3
-    print("Calculating price changes with trend categories...")
-    calculate_price_changes_with_trend(in_memory_data, indicators_data, market_cap_categories)
-    
-    # Step 7: Calculate trend counts and save directly to S3
+    # Step 6: Calculate trend counts and save to S3
     print("Calculating trend counts and uploading to S3...")
     trend_df = calculate_trend_counts(indicators_data)
     
-    # Step 8: Generate visualizations
-    print("Generating market pulse chart...")
-    if generate_market_pulse_chart(trend_df):
-        # Step 9: Upload market pulse to Discord
-        try:
-            upload_to_discord(discord_webhook_url, image_path=market_pulse_image_path)
-            logger.log_event(log_category="INFO", message="Successfully uploaded market pulse chart to Discord", path=log_path)
-            print("[OK] Market pulse chart uploaded to Discord")
-        except Exception as e:
-            logger.log_event(log_category="ERROR", message=f"Failed to upload market pulse chart to Discord. Error: {e}", path=log_path)
-            print(f"[ERROR] Failed to upload market pulse chart: {e}")
+    # Step 7: Calculate price changes with trend and market cap categories
+    print("Calculating price changes with trend categories...")
+    prices_df, day_change_dict = calculate_price_changes_with_trend(in_memory_data, indicators_data, market_cap_categories)
     
-    print("Generating RSI sentiment chart...")
-    if generate_rsi_sentiment_chart(indicators_data):
-        # Step 10: Upload RSI sentiment to Discord
-        try:
-            upload_to_discord(discord_webhook_url, image_path=rsi_sentiment_image_path)
-            logger.log_event(log_category="INFO", message="Successfully uploaded RSI sentiment chart to Discord", path=log_path)
-            print("[OK] RSI sentiment chart uploaded to Discord")
-        except Exception as e:
-            logger.log_event(log_category="ERROR", message=f"Failed to upload RSI sentiment chart to Discord. Error: {e}", path=log_path)
-            print(f"[ERROR] Failed to upload RSI sentiment chart: {e}")
+    # Step 8: Sort gainers and losers
+    print("Sorting top gainers and losers...")
+    top_gainers, top_losers = sort_gainers_losers(day_change_dict)
+    
+    # Step 9: Get top 30 gainers and losers
+    top_30_gainers = dict(islice(top_gainers.items(), 30))
+    top_30_losers = dict(islice(top_losers.items(), 30))
+    
+    # Step 10: Format messages
+    top_30_gainers_formatted = format_message(top_30_gainers, market_cap_categories, gainers=True)
+    top_30_losers_formatted = format_message(top_30_losers, market_cap_categories, gainers=False)
+    
+    full_message = top_30_gainers_formatted + "\n\n" + top_30_losers_formatted
+    
+    # Step 11: Generate market pulse chart
+    print("Generating daily market pulse chart...")
+    if generate_market_pulse_chart(trend_df):
+        print("[OK] Daily market pulse chart generated successfully")
+    
+    # Step 12: Send to Discord
+    print("Sending results to Discord...")
+    try:
+        send_to_discord(discord_webhook_url, message=full_message)
+        logger.log_event(log_category="INFO", message="Successfully sent top gainers/losers to Discord", path=log_path)
+        print("[OK] Top gainers/losers sent to Discord")
+    except Exception as e:
+        logger.log_event(log_category="ERROR", message=f"Failed to send to Discord. Error: {e}", path=log_path)
+        print(f"[ERROR] Failed to send to Discord: {e}")
     
     print("\n[OK] Process completed successfully!")
-    print(f"  - Price changes uploaded to S3: s3://{S3_BUCKET_NAME}/price-change/prices_1h.csv")
-    print(f"  - Trend counts uploaded to S3: s3://{S3_BUCKET_NAME}/market-pulse/coin_trend_1h.csv")
+    print(f"  - Prices saved locally: {prices_1d_path}")
+    print(f"  - Prices uploaded to S3: s3://{S3_BUCKET_NAME}/price-change/prices_1d.csv")
+    print(f"  - Trend counts saved locally: {trend_1d_path}")
+    print(f"  - Trend counts uploaded to S3: s3://{S3_BUCKET_NAME}/market-pulse/coin_trend_1d.csv")
     print(f"  - Market pulse chart saved to: {market_pulse_image_path}")
-    print(f"  - RSI sentiment chart saved to: {rsi_sentiment_image_path}")
+    print(f"  - Top gainers/losers sent to Discord")
