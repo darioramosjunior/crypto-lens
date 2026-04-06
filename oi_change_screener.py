@@ -466,8 +466,8 @@ def calculate_oi_change_percentage(current_results, historical_results, price_da
             # Get category (default to N/A if not found)
             category = category_data.get(symbol, "N/A")
             
-            # Get market cap (default to None if not found)
-            market_cap = market_cap_data.get(symbol)
+            # Get market cap (default to N/A if not found or None)
+            market_cap = market_cap_data.get(symbol) or "N/A"
 
             oi_changes.append({
                 "symbol": symbol,
