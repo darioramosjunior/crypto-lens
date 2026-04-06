@@ -21,9 +21,10 @@ load_dotenv()
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
 coin_data_csv = os.path.join(script_dir, "coin_data.csv")
+output_dir = "/var/lib/crypto-dashboard"
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
-prices_csv = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
-oi_changes_csv = os.path.join(script_dir, "oi_changes_1h.csv")
+prices_csv = os.path.join(output_dir, "prices_1h.csv")
+oi_changes_csv = os.path.join(output_dir, "oi_changes_1h.csv")
 
 # AWS S3 configuration
 S3_BUCKET_NAME = "data-portfolio-2026"

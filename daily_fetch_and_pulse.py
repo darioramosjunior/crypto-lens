@@ -16,7 +16,7 @@ if sys.platform.startswith('win'):
 
 import aiohttp
 import time
-import pandas_ta_classic as ta
+import pandas_ta as ta
 from discord_integrator import send_to_discord, upload_to_discord
 from dotenv import load_dotenv
 import boto3
@@ -26,9 +26,10 @@ load_dotenv()
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "daily_fetch_and_pulse_log.txt")
 coin_data_path = os.path.join(script_dir, "coin_data.csv")
-prices_1d_path = os.path.join(script_dir, "daily_market_pulse", "prices_1d.csv")
-trend_1d_path = os.path.join(script_dir, "daily_market_pulse", "coin_trend_1d.csv")
-market_pulse_image_path = os.path.join(script_dir, "daily_market_pulse", "market_pulse.png")
+output_dir = "/var/lib/crypto-dashboard"
+prices_1d_path = os.path.join(output_dir, "prices_1d.csv")
+trend_1d_path = os.path.join(output_dir, "coin_trend_1d.csv")
+market_pulse_image_path = os.path.join(output_dir, "market_pulse_daily.png")
 
 # AWS S3 configuration
 S3_BUCKET_NAME = "data-portfolio-2026"
@@ -235,7 +236,7 @@ def calculate_trend_counts(indicators_data):
         trend_df = trend_df.sort_index()
         
         # Save locally
-        os.makedirs(os.path.dirname(trend_1d_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         trend_df.to_csv(trend_1d_path)
         logger.log_event(log_category="INFO", message=f"Successfully saved trend counts locally to {trend_1d_path}", path=log_path)
         print(f"[OK] Saved coin_trend_1d.csv locally to {trend_1d_path}")
@@ -307,7 +308,7 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
         price_changes_df = pd.DataFrame(price_changes)
         
         # Save locally
-        os.makedirs(os.path.dirname(prices_1d_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         price_changes_df.to_csv(prices_1d_path, index=False)
         logger.log_event(log_category="INFO", message=f"Successfully saved daily price changes locally to {prices_1d_path}", path=log_path)
         print(f"[OK] Saved prices_1d.csv locally to {prices_1d_path}")
@@ -386,7 +387,7 @@ def generate_market_pulse_chart(trend_df):
         total = int(latest['uptrend'] + latest['pullback'] + latest['downtrend'] + latest['reversal-down'] + latest['reversal-up'] + latest['uncategorized'])
         
         # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(market_pulse_image_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         
         # Plot using matplotlib (same formatting as hourly)
         plt.figure(figsize=(12, 6))

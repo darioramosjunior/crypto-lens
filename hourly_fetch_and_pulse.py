@@ -14,7 +14,7 @@ if sys.platform.startswith('win'):
 
 import aiohttp
 import time
-import pandas_ta_classic as ta
+import pandas_ta as ta
 from discord_integrator import upload_to_discord
 from dotenv import load_dotenv
 import boto3
@@ -24,10 +24,11 @@ load_dotenv()
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
 coin_data_path = os.path.join(script_dir, "coin_data.csv")
-market_pulse_image_path = os.path.join(script_dir, "hourly_market_pulse", "market_pulse.png")
-rsi_sentiment_image_path = os.path.join(script_dir, "hourly_market_pulse", "rsi_sentiment.png")
-prices_1h_path = os.path.join(script_dir, "hourly_market_pulse", "prices_1h.csv")
-trend_1h_path = os.path.join(script_dir, "hourly_market_pulse", "coin_trend_1h.csv")
+output_dir = "/var/lib/crypto-dashboard"
+market_pulse_image_path = os.path.join(output_dir, "market_pulse.png")
+rsi_sentiment_image_path = os.path.join(output_dir, "rsi_sentiment.png")
+prices_1h_path = os.path.join(output_dir, "prices_1h.csv")
+trend_1h_path = os.path.join(output_dir, "coin_trend_1h.csv")
 
 # Read webhook from environment
 discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK", "https://discord.com/api/webhooks/1369672316887367761/zlxHjxikEEhSOK-TcRmz37jH-2kVl8NAiB_BIMdXd0TAco9DnfI5MYGa8Nuuy34poarQ")
@@ -200,7 +201,7 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
         price_changes_df = pd.DataFrame(price_changes)
         
         # Save locally
-        os.makedirs(os.path.dirname(prices_1h_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         price_changes_df.to_csv(prices_1h_path, index=False)
         logger.log_event(log_category="INFO", message=f"Successfully saved latest price changes locally to {prices_1h_path}", path=log_path)
         print(f"[OK] Saved prices_1h.csv locally to {prices_1h_path}")
@@ -307,7 +308,7 @@ def calculate_trend_counts(indicators_data):
         trend_df = trend_df.sort_index()
         
         # Save locally
-        os.makedirs(os.path.dirname(trend_1h_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         trend_df.to_csv(trend_1h_path)
         logger.log_event(log_category="INFO", message=f"Successfully saved trend counts locally to {trend_1h_path}", path=log_path)
         print(f"[OK] Saved coin_trend_1h.csv locally to {trend_1h_path}")
@@ -347,7 +348,7 @@ def generate_market_pulse_chart(trend_df):
         total = int(latest['uptrend'] + latest['pullback'] + latest['downtrend'] + latest['reversal-down'] + latest['reversal-up'] + latest['uncategorized'])
         
         # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(market_pulse_image_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         
         # Plot using matplotlib
         plt.figure(figsize=(12, 6))
@@ -396,7 +397,7 @@ def generate_rsi_sentiment_chart(indicators_data):
             return False
         
         # Create output directory if it doesn't exist
-        os.makedirs(os.path.dirname(rsi_sentiment_image_path), exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         
         # Calculate statistics
         mean_rsi = np.mean(rsi_values)

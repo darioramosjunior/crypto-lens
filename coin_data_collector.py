@@ -17,7 +17,8 @@ load_dotenv()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "coin_data_collector_logs.txt")
-coin_data_output_path = os.path.join(script_dir, "coin_data.csv")
+output_dir = "/var/lib/crypto-dashboard"
+coin_data_output_path = os.path.join(output_dir, "coin_data.csv")
 
 # Ensure log directory exists
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
@@ -259,7 +260,7 @@ def save_coin_data(coins, market_cap_data):
     :param market_cap_data: dict with market cap and category info
     """
     try:
-        os.makedirs(os.path.dirname(coin_data_output_path) or ".", exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         with open(coin_data_output_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
