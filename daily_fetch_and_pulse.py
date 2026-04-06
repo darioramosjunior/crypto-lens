@@ -16,7 +16,7 @@ if sys.platform.startswith('win'):
 
 import aiohttp
 import time
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from discord_integrator import send_to_discord, upload_to_discord
 from dotenv import load_dotenv
 import boto3
