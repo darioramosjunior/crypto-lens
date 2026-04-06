@@ -206,7 +206,7 @@ def save_oi_changes_to_csv(oi_changes):
                 "previous_open_interest": item["previous_oi"],
                 "oi_change": item["change_percentage"],
                 "market_cap_category": item.get("category", "N/A"),
-                "market_cap": item.get("market_cap")
+                "market_cap": item.get("market_cap", "N/A")
             })
         
         df = pd.DataFrame(records)
