@@ -199,6 +199,7 @@ def save_oi_changes_to_csv(oi_changes):
         timestamp = datetime.now().isoformat()
         records = []
         for item in oi_changes:
+            market_cap = item.get("market_cap")
             records.append({
                 "symbol": item["symbol"],
                 "timestamp": timestamp,
@@ -206,13 +207,13 @@ def save_oi_changes_to_csv(oi_changes):
                 "previous_open_interest": item["previous_oi"],
                 "oi_change": item["change_percentage"],
                 "market_cap_category": item.get("category", "N/A"),
-                "market_cap": item.get("market_cap", "N/A")
+                "market_cap": market_cap if market_cap is not None else "N/A"
             })
         
         df = pd.DataFrame(records)
         
         # Ensure numeric columns are float type
-        for col in ['open_interest', 'previous_open_interest', 'oi_change', 'market_cap']:
+        for col in ['open_interest', 'previous_open_interest', 'oi_change']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
@@ -466,8 +467,8 @@ def calculate_oi_change_percentage(current_results, historical_results, price_da
             # Get category (default to N/A if not found)
             category = category_data.get(symbol, "N/A")
             
-            # Get market cap (default to N/A if not found or None)
-            market_cap = market_cap_data.get(symbol) or "N/A"
+            # Get market cap (default to None if not found)
+            market_cap = market_cap_data.get(symbol)
 
             oi_changes.append({
                 "symbol": symbol,
