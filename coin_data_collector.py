@@ -19,6 +19,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "coin_data_collector_logs.txt")
 coin_data_output_path = os.path.join(script_dir, "coin_data.csv")
 
+# Ensure log directory exists
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+# Create log file if it doesn't exist
+if not os.path.exists(log_path):
+    open(log_path, 'a').close()
+
 CMC_API_KEY = os.environ.get("cmc_api_key")
 if not CMC_API_KEY:
     logger.log_event(log_category="WARNING", message="cmc_api_key environment variable not set. Market cap data will not be collected.", path=log_path)
