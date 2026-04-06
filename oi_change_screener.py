@@ -205,13 +205,14 @@ def save_oi_changes_to_csv(oi_changes):
                 "open_interest": item["current_oi"],
                 "previous_open_interest": item["previous_oi"],
                 "oi_change": item["change_percentage"],
-                "market_cap_category": item.get("category", "N/A")
+                "market_cap_category": item.get("category", "N/A"),
+                "market_cap": item.get("market_cap")
             })
         
         df = pd.DataFrame(records)
         
         # Ensure numeric columns are float type
-        for col in ['open_interest', 'previous_open_interest', 'oi_change']:
+        for col in ['open_interest', 'previous_open_interest', 'oi_change', 'market_cap']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
