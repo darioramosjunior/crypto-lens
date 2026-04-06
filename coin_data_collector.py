@@ -14,6 +14,7 @@ import boto3
 from io import BytesIO
 
 load_dotenv()
+os.umask(0o022)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "coin_data_collector_logs.txt")
@@ -262,13 +263,27 @@ def save_coin_data(coins, market_cap_data):
     try:
         os.makedirs(output_dir, exist_ok=True)
 
-        with open(coin_data_output_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["coin", "market_cap_value", "market_cap_category"])
-
-            for coin in coins:
-                data = market_cap_data.get(coin, {"market_cap": "N/A", "category": "N/A"})
-                writer.writerow([coin, data["market_cap"], data["category"]])
+        # Create DataFrame with proper data types
+        data_list = []
+        for coin in coins:
+            data = market_cap_data.get(coin, {"market_cap": "N/A", "category": "N/A"})
+            market_cap = data["market_cap"]
+            # Convert market cap to float if it's not "N/A"
+            if market_cap != "N/A":
+                try:
+                    market_cap = float(market_cap)
+                except (ValueError, TypeError):
+                    market_cap = None
+            else:
+                market_cap = None
+            data_list.append({
+                "coin": coin,
+                "market_cap_value": market_cap,
+                "market_cap_category": data["category"]
+            })
+        
+        df = pd.DataFrame(data_list)
+        df.to_csv(coin_data_output_path, index=False)
 
         logger.log_event(log_category="INFO", message=f"Successfully saved coin data to {coin_data_output_path}", path=log_path)
         print(f"\n[OK] Results saved locally to {coin_data_output_path}")
@@ -307,6 +322,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
 
 
 if __name__ == "__main__":
+    import pandas as pd
     print(f"Running {__file__}...")
 
     # Step 1: Get coin list from Binance

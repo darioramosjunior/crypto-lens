@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 import boto3
 
 load_dotenv()
+os.umask(0o022)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
@@ -200,6 +201,11 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
         
         price_changes_df = pd.DataFrame(price_changes)
         
+        # Ensure numeric columns are float type
+        for col in ['close', 'previous_close', 'price_change']:
+            if col in price_changes_df.columns:
+                price_changes_df[col] = pd.to_numeric(price_changes_df[col], errors='coerce')
+        
         # Save locally
         os.makedirs(output_dir, exist_ok=True)
         price_changes_df.to_csv(prices_1h_path, index=False)
@@ -306,6 +312,10 @@ def calculate_trend_counts(indicators_data):
         trend_df = pd.DataFrame.from_dict(trend_counter, orient='index')
         trend_df.index.name = 'timestamp'
         trend_df = trend_df.sort_index()
+        
+        # Ensure all trend count columns are int type
+        for col in trend_df.columns:
+            trend_df[col] = trend_df[col].astype('int64')
         
         # Save locally
         os.makedirs(output_dir, exist_ok=True)

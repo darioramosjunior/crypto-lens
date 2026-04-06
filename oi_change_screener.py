@@ -17,6 +17,7 @@ from discord_integrator import send_to_discord
 from dotenv import load_dotenv
 
 load_dotenv()
+os.umask(0o022)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
@@ -208,6 +209,11 @@ def save_oi_changes_to_csv(oi_changes):
             })
         
         df = pd.DataFrame(records)
+        
+        # Ensure numeric columns are float type
+        for col in ['open_interest', 'previous_open_interest', 'oi_change']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
         # Save locally
         df.to_csv(oi_changes_csv, index=False)
