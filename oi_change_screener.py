@@ -21,7 +21,7 @@ os.umask(0o022)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
-coin_data_csv = os.path.join(script_dir, "coin_data.csv")
+coin_data_csv = "/var/lib/crypto-dashboard/coin_data.csv"
 output_dir = "/var/lib/crypto-dashboard"
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
 prices_csv = os.path.join(output_dir, "prices_1h.csv")
