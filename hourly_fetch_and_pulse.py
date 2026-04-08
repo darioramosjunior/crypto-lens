@@ -24,7 +24,7 @@ os.umask(0o022)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
-coin_data_path = os.path.join(script_dir, "coin_data.csv")
+coin_data_path = "/var/lib/crypto-dashboard/coin_data.csv"
 output_dir = "/var/lib/crypto-dashboard"
 market_pulse_image_path = os.path.join(output_dir, "market_pulse.png")
 rsi_sentiment_image_path = os.path.join(output_dir, "rsi_sentiment.png")
