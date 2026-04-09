@@ -12,7 +12,8 @@ def delete_content():
         print(f"[WARNING] Log path {logs_path} does not exist. No logs to clean.")
         return
     
-    log_files = glob(os.path.join(logs_path, "*.txt"))
+    # Get both .txt and .log files
+    log_files = glob(os.path.join(logs_path, "*.txt")) + glob(os.path.join(logs_path, "*.log"))
     if not log_files:
         print(f"[INFO] No log files found in {logs_path}")
         return
