@@ -94,10 +94,25 @@ install_dependencies() {
     source "${VENV_DIR}/bin/activate"
     
     # Upgrade pip first
-    python3 -m pip install --upgrade pip setuptools wheel > /dev/null 2>&1
+    log_info "Upgrading pip, setuptools, and wheel..."
+    python3 -m pip install --upgrade pip setuptools wheel
     
-    # Install from requirements.txt
-    pip install -r "${APP_DIR}/requirements.txt"
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to upgrade pip/setuptools/wheel"
+        deactivate
+        exit 1
+    fi
+    log_success "pip, setuptools, and wheel upgraded"
+    
+    # Install from requirements.txt with verbose output
+    log_info "Installing dependencies from requirements.txt (this may take a few minutes)..."
+    pip install -r "${APP_DIR}/requirements.txt" --no-cache-dir
+    
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to install dependencies from requirements.txt"
+        deactivate
+        exit 1
+    fi
     
     deactivate
     log_success "All dependencies installed successfully"
