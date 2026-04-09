@@ -162,9 +162,9 @@ setup_directories() {
     fi
     
     # Set ownership and permissions for app directory
-    # App directory: crypto-lens user owns it, readable by group
+    # Owner can read/write/execute, group and others can read/execute (view but not modify)
     chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
-    chmod 750 "$APP_DIR"
+    chmod 755 "$APP_DIR"
     log_success "Set ownership of app directory to $SERVICE_USER"
     
     # Log directory: crypto-lens user owns it, accessible only by owner
