@@ -1,13 +1,25 @@
 import requests
 import os
 import logger
+import config
 from datetime import datetime
 
+# Ensure log directory exists
+config.ensure_log_directory()
+
 script_path = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_path, "logs", "discord_integrator.txt")
+log_path = config.get_log_file_path("discord_integrator")
 image_path = os.path.join(script_path, "hourly_market_pulse", "market_pulse.png")
 webhook_url = ""
 now = datetime.now()
+
+# Create log file if it doesn't exist
+try:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if not os.path.exists(log_path):
+        open(log_path, 'a').close()
+except Exception as e:
+    print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 
 def send_to_discord(webhook_url, message):
