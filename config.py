@@ -4,7 +4,7 @@ Stores default paths, cron schedules, and other global settings
 """
 
 import os
-import json
+import configparser
 
 # Configuration defaults
 _DEFAULT_CONFIG = {
@@ -18,16 +18,39 @@ _DEFAULT_CONFIG = {
 # Load configuration from config.conf file
 def _load_config():
     """
-    Load configuration from config.conf file
+    Load configuration from config.conf file (INI format)
     :return: Dictionary with configuration values
     """
     config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.conf")
     
     try:
         if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                config = json.load(f)
-                return config
+            config = configparser.ConfigParser()
+            config.read(config_file)
+            
+            # Extract values from sections
+            config_dict = {}
+            
+            # Read paths section
+            if config.has_section('paths'):
+                if config.has_option('paths', 'log_path'):
+                    config_dict['log_path'] = config.get('paths', 'log_path')
+                if config.has_option('paths', 'output_path'):
+                    config_dict['output_path'] = config.get('paths', 'output_path')
+            
+            # Read schedules section
+            if config.has_section('schedules'):
+                if config.has_option('schedules', 'main_cron_sched'):
+                    config_dict['main_cron_sched'] = config.get('schedules', 'main_cron_sched')
+                if config.has_option('schedules', 'coin_data_collector_cron_sched'):
+                    config_dict['coin_data_collector_cron_sched'] = config.get('schedules', 'coin_data_collector_cron_sched')
+                if config.has_option('schedules', 'logs_cleaner_cron_sched'):
+                    config_dict['logs_cleaner_cron_sched'] = config.get('schedules', 'logs_cleaner_cron_sched')
+            
+            # Merge with defaults (defaults are fallback values)
+            final_config = _DEFAULT_CONFIG.copy()
+            final_config.update(config_dict)
+            return final_config
         else:
             print(f"[WARNING] Configuration file {config_file} not found. Using default settings.")
             return _DEFAULT_CONFIG
@@ -48,6 +71,8 @@ OUTPUT_PATH = _config.get("output_path", _DEFAULT_CONFIG["output_path"])
 
 # Cron schedule configurations
 LOGS_CLEANER_CRON_SCHED = _config.get("logs_cleaner_cron_sched", _DEFAULT_CONFIG["logs_cleaner_cron_sched"])
+
+COIN_DATA_COLLECTOR_CRON_SCHED = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
 
 COIN_DATA_COLLECTOR_CRON_SCHED = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
 
