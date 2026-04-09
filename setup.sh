@@ -91,30 +91,35 @@ install_dependencies() {
         exit 1
     fi
     
-    source "${VENV_DIR}/bin/activate"
+    # Use explicit path to venv python and pip executables
+    VENV_PYTHON="${VENV_DIR}/bin/python3"
+    VENV_PIP="${VENV_DIR}/bin/pip"
+    
+    # Verify virtual environment python exists
+    if [[ ! -f "$VENV_PYTHON" ]]; then
+        log_error "Virtual environment python executable not found at $VENV_PYTHON"
+        exit 1
+    fi
     
     # Upgrade pip first
     log_info "Upgrading pip, setuptools, and wheel..."
-    python3 -m pip install --upgrade pip setuptools wheel
+    "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel
     
     if [[ $? -ne 0 ]]; then
         log_error "Failed to upgrade pip/setuptools/wheel"
-        deactivate
         exit 1
     fi
     log_success "pip, setuptools, and wheel upgraded"
     
     # Install from requirements.txt with verbose output
     log_info "Installing dependencies from requirements.txt (this may take a few minutes)..."
-    pip install -r "${APP_DIR}/requirements.txt" --no-cache-dir
+    "$VENV_PIP" install -r "${APP_DIR}/requirements.txt" --no-cache-dir
     
     if [[ $? -ne 0 ]]; then
         log_error "Failed to install dependencies from requirements.txt"
-        deactivate
         exit 1
     fi
     
-    deactivate
     log_success "All dependencies installed successfully"
 }
 
