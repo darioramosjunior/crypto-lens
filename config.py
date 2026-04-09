@@ -9,7 +9,8 @@ import json
 # Configuration defaults
 _DEFAULT_CONFIG = {
     "log_path": "/var/log/crypto-lens/",
-    "main_cron_sched": "*/5 * * * *"
+    "main_cron_sched": "*/5 * * * *",
+    "output_path": "/var/run/crypto-lens/"
 }
 
 # Load configuration from config.conf file
@@ -40,6 +41,9 @@ LOG_PATH = _config.get("log_path", _DEFAULT_CONFIG["log_path"])
 # Cron schedule configuration
 MAIN_CRON_SCHED = _config.get("main_cron_sched", _DEFAULT_CONFIG["main_cron_sched"])
 
+# Output path configuration
+OUTPUT_PATH = _config.get("output_path", _DEFAULT_CONFIG["output_path"])
+
 # Ensure log directory exists
 def ensure_log_directory():
     """Create log directory if it doesn't exist"""
@@ -59,3 +63,20 @@ def get_log_file_path(script_name):
     """
     log_filename = f"{script_name}_log.txt"
     return os.path.join(LOG_PATH, log_filename)
+
+def ensure_output_directory():
+    """Create output directory if it doesn't exist"""
+    try:
+        os.makedirs(OUTPUT_PATH, exist_ok=True)
+        return True
+    except Exception as e:
+        print(f"[WARNING] Failed to create output directory {OUTPUT_PATH}: {e}")
+        return False
+
+def get_output_file_path(filename):
+    """
+    Get the full path for an output file
+    :param filename: Name of the file (e.g., 'prices_1h.csv', 'market_pulse.png')
+    :return: Full path to the output file
+    """
+    return os.path.join(OUTPUT_PATH, filename)

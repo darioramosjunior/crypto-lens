@@ -17,13 +17,14 @@ import config
 load_dotenv()
 os.umask(0o022)
 
-# Ensure log directory exists
+# Ensure log and output directories exist
 config.ensure_log_directory()
+config.ensure_output_directory()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = config.get_log_file_path("coin_data_collector")
-output_dir = "/var/lib/crypto-dashboard"
-coin_data_output_path = os.path.join(output_dir, "coin_data.csv")
+output_dir = config.OUTPUT_PATH
+coin_data_output_path = config.get_output_file_path("coin_data.csv")
 
 # Create log file if it doesn't exist
 try:

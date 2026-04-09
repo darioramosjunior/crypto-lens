@@ -23,17 +23,18 @@ import boto3
 load_dotenv()
 os.umask(0o022)
 
-# Ensure log directory exists
+# Ensure log and output directories exist
 config.ensure_log_directory()
+config.ensure_output_directory()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = config.get_log_file_path("hourly_fetch_and_pulse")
-coin_data_path = "/var/lib/crypto-dashboard/coin_data.csv"
-output_dir = "/var/lib/crypto-dashboard"
-market_pulse_image_path = os.path.join(output_dir, "market_pulse.png")
-rsi_sentiment_image_path = os.path.join(output_dir, "rsi_sentiment.png")
-prices_1h_path = os.path.join(output_dir, "prices_1h.csv")
-trend_1h_path = os.path.join(output_dir, "coin_trend_1h.csv")
+coin_data_path = config.get_output_file_path("coin_data.csv")
+output_dir = config.OUTPUT_PATH
+market_pulse_image_path = config.get_output_file_path("market_pulse.png")
+rsi_sentiment_image_path = config.get_output_file_path("rsi_sentiment.png")
+prices_1h_path = config.get_output_file_path("prices_1h.csv")
+trend_1h_path = config.get_output_file_path("coin_trend_1h.csv")
 
 # Create log file if it doesn't exist
 try:

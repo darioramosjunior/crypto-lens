@@ -20,16 +20,17 @@ from dotenv import load_dotenv
 load_dotenv()
 os.umask(0o022)
 
-# Ensure log directory exists
+# Ensure log and output directories exist
 config.ensure_log_directory()
+config.ensure_output_directory()
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 log_path = config.get_log_file_path("oi_change_screener")
-coin_data_csv = "/var/lib/crypto-dashboard/coin_data.csv"
-output_dir = "/var/lib/crypto-dashboard"
+coin_data_csv = config.get_output_file_path("coin_data.csv")
+output_dir = config.OUTPUT_PATH
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
-prices_csv = os.path.join(output_dir, "prices_1h.csv")
-oi_changes_csv = os.path.join(output_dir, "oi_changes_1h.csv")
+prices_csv = config.get_output_file_path("prices_1h.csv")
+oi_changes_csv = config.get_output_file_path("oi_changes_1h.csv")
 
 # Create log file if it doesn't exist
 try:
