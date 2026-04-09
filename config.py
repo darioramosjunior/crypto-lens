@@ -10,7 +10,9 @@ import json
 _DEFAULT_CONFIG = {
     "log_path": "/var/log/crypto-lens/",
     "main_cron_sched": "*/5 * * * *",
-    "output_path": "/var/run/crypto-lens/"
+    "output_path": "/var/run/crypto-lens/",
+    "logs_cleaner_cron_sched": "0 15 * * *",
+    "coin_data_collector_cron_sched": "0 12 * * *"
 }
 
 # Load configuration from config.conf file
@@ -43,6 +45,11 @@ MAIN_CRON_SCHED = _config.get("main_cron_sched", _DEFAULT_CONFIG["main_cron_sche
 
 # Output path configuration
 OUTPUT_PATH = _config.get("output_path", _DEFAULT_CONFIG["output_path"])
+
+# Cron schedule configurations
+LOGS_CLEANER_CRON_SCHED = _config.get("logs_cleaner_cron_sched", _DEFAULT_CONFIG["logs_cleaner_cron_sched"])
+
+COIN_DATA_COLLECTOR_CRON_SCHED = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
 
 # Ensure log directory exists
 def ensure_log_directory():
