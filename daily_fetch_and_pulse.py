@@ -10,6 +10,7 @@ from scipy.stats import skew
 from io import BytesIO
 from datetime import datetime
 from itertools import islice
+import config
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -24,13 +25,24 @@ import boto3
 load_dotenv()
 os.umask(0o022)
 
+# Ensure log directory exists
+config.ensure_log_directory()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_dir, "logs", "daily_fetch_and_pulse_log.txt")
+log_path = config.get_log_file_path("daily_fetch_and_pulse")
 coin_data_path = "/var/lib/crypto-dashboard/coin_data.csv"
 output_dir = "/var/lib/crypto-dashboard"
 prices_1d_path = os.path.join(output_dir, "prices_1d.csv")
 trend_1d_path = os.path.join(output_dir, "coin_trend_1d.csv")
 market_pulse_image_path = os.path.join(output_dir, "market_pulse_daily.png")
+
+# Create log file if it doesn't exist
+try:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if not os.path.exists(log_path):
+        open(log_path, 'a').close()
+except Exception as e:
+    print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # AWS S3 configuration
 S3_BUCKET_NAME = "data-portfolio-2026"

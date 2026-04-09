@@ -8,6 +8,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 from scipy.stats import skew
 from io import BytesIO
+import config
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -22,14 +23,25 @@ import boto3
 load_dotenv()
 os.umask(0o022)
 
+# Ensure log directory exists
+config.ensure_log_directory()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_dir, "logs", "hourly_fetch_and_pulse_log.txt")
+log_path = config.get_log_file_path("hourly_fetch_and_pulse")
 coin_data_path = "/var/lib/crypto-dashboard/coin_data.csv"
 output_dir = "/var/lib/crypto-dashboard"
 market_pulse_image_path = os.path.join(output_dir, "market_pulse.png")
 rsi_sentiment_image_path = os.path.join(output_dir, "rsi_sentiment.png")
 prices_1h_path = os.path.join(output_dir, "prices_1h.csv")
 trend_1h_path = os.path.join(output_dir, "coin_trend_1h.csv")
+
+# Create log file if it doesn't exist
+try:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if not os.path.exists(log_path):
+        open(log_path, 'a').close()
+except Exception as e:
+    print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # Read webhook from environment
 discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK", "https://discord.com/api/webhooks/1369672316887367761/zlxHjxikEEhSOK-TcRmz37jH-2kVl8NAiB_BIMdXd0TAco9DnfI5MYGa8Nuuy34poarQ")

@@ -12,21 +12,26 @@ import time
 from dotenv import load_dotenv
 import boto3
 from io import BytesIO
+import config
 
 load_dotenv()
 os.umask(0o022)
 
+# Ensure log directory exists
+config.ensure_log_directory()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_dir, "logs", "coin_data_collector_logs.txt")
+log_path = config.get_log_file_path("coin_data_collector")
 output_dir = "/var/lib/crypto-dashboard"
 coin_data_output_path = os.path.join(output_dir, "coin_data.csv")
 
-# Ensure log directory exists
-os.makedirs(os.path.dirname(log_path), exist_ok=True)
-
 # Create log file if it doesn't exist
-if not os.path.exists(log_path):
-    open(log_path, 'a').close()
+try:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if not os.path.exists(log_path):
+        open(log_path, 'a').close()
+except Exception as e:
+    print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 CMC_API_KEY = os.environ.get("cmc_api_key")
 if not CMC_API_KEY:

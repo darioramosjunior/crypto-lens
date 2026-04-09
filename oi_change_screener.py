@@ -7,6 +7,7 @@ import json
 import pandas as pd
 from datetime import datetime, timedelta
 from io import BytesIO
+import config
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -19,13 +20,24 @@ from dotenv import load_dotenv
 load_dotenv()
 os.umask(0o022)
 
+# Ensure log directory exists
+config.ensure_log_directory()
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = os.path.join(script_dir, "logs", "oi_change_screener_log.txt")
+log_path = config.get_log_file_path("oi_change_screener")
 coin_data_csv = "/var/lib/crypto-dashboard/coin_data.csv"
 output_dir = "/var/lib/crypto-dashboard"
 previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
 prices_csv = os.path.join(output_dir, "prices_1h.csv")
 oi_changes_csv = os.path.join(output_dir, "oi_changes_1h.csv")
+
+# Create log file if it doesn't exist
+try:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    if not os.path.exists(log_path):
+        open(log_path, 'a').close()
+except Exception as e:
+    print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # AWS S3 configuration
 S3_BUCKET_NAME = "data-portfolio-2026"
