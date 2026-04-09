@@ -50,11 +50,9 @@ HISTORICAL_OI_ENDPOINT = f"https://fapi.binance.com/futures/data/openInterestHis
 RATE_LIMIT = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
 
 # Read webhook from environment
-webhook_url = os.getenv(
-    "OI_CHANGE_WEBHOOK",
-    "https://discord.com/api/webhooks/1476932257615839434/8AnKIHpED8HLMP5jHz7xKXByHTpogM6ONhvJh3KDB_nhXHeIsRs5AXZYhu78Y7Wr7iXO"
-)
-if not os.getenv("OI_CHANGE_WEBHOOK"):
+webhook_url = os.getenv("OI_CHANGE_WEBHOOK")
+
+if not webhook_url:
     logger.log_event(
         log_category="WARNING",
         message="OI_CHANGE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting OI_CHANGE_WEBHOOK in .env or CI secrets.",

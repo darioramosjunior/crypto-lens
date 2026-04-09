@@ -50,8 +50,8 @@ S3_BUCKET_NAME = "data-portfolio-2026"
 AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
 
 # Discord webhook
-discord_webhook_url = os.getenv("DAY_CHANGE_WEBHOOK", "https://discord.com/api/webhooks/1375363041599950912/3vx1qI7OQAoIwz4TFV4hhwiK1uIZkr_vu3peoBvn4PO0YpF8z4yN410HC9kJkD4NhSWH")
-if not os.getenv("DAY_CHANGE_WEBHOOK"):
+discord_webhook_url = os.getenv("DAY_CHANGE_WEBHOOK")
+if not discord_webhook_url:
     logger.log_event(log_category="WARNING", message="DAY_CHANGE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting DAY_CHANGE_WEBHOOK in .env or CI secrets.", path=log_path)
 
 BASE_URL = "https://fapi.binance.com/fapi/v1/klines"

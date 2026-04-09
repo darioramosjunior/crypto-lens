@@ -45,8 +45,8 @@ except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # Read webhook from environment
-discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK", "https://discord.com/api/webhooks/1369672316887367761/zlxHjxikEEhSOK-TcRmz37jH-2kVl8NAiB_BIMdXd0TAco9DnfI5MYGa8Nuuy34poarQ")
-if not os.getenv("MARKET_PULSE_WEBHOOK"):
+discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK")
+if not discord_webhook_url:
     logger.log_event(log_category="WARNING", message="MARKET_PULSE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting MARKET_PULSE_WEBHOOK in .env or CI secrets.", path=log_path)
 
 # AWS S3 configuration
