@@ -35,6 +35,7 @@ def run_script(script_name):
 def main():
     """Main function to run all scripts in sequence."""
     scripts = [
+        "coin_data_collector.py",
         "hourly_fetch_and_pulse.py",
         "daily_fetch_and_pulse.py",
         "oi_change_screener.py"

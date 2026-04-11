@@ -284,29 +284,26 @@ setup_cron_jobs() {
     
     # Parse config.conf to extract cron schedules from INI format
     MAIN_CRON=$(extract_config_value "schedules" "main_cron_sched")
-    COLLECTOR_CRON=$(extract_config_value "schedules" "coin_data_collector_cron_sched")
     CLEANER_CRON=$(extract_config_value "schedules" "logs_cleaner_cron_sched")
     
     # Validate extracted values
-    if [[ -z "$MAIN_CRON" ]] || [[ -z "$COLLECTOR_CRON" ]] || [[ -z "$CLEANER_CRON" ]]; then
+    if [[ -z "$MAIN_CRON" ]] || [[ -z "$CLEANER_CRON" ]]; then
         log_error "Failed to parse cron schedules from config.conf"
         log_error "Ensure config.conf contains:"
         log_error "  [schedules]"
         log_error "  main_cron_sched=*/5 * * * *"
-        log_error "  coin_data_collector_cron_sched=0 12 * * *"
         log_error "  logs_cleaner_cron_sched=0 15 * * *"
         exit 1
     fi
     
     log_info "Parsed cron schedules from config.conf:"
     log_info "  - main.py schedule: $MAIN_CRON"
-    log_info "  - coin_data_collector.py schedule: $COLLECTOR_CRON"
     log_info "  - logs_cleaner.py schedule: $CLEANER_CRON"
+    log_info "  (Note: coin_data_collector.py is executed within main.py)"
     
     # Create cron jobs using absolute paths
     # APP_DIR is already an absolute path from our initialization
     create_cron_job "crypto-lens-main" "$MAIN_CRON" "${APP_DIR}/main.py" "Main crypto-lens pipeline"
-    create_cron_job "crypto-lens-collector" "$COLLECTOR_CRON" "${APP_DIR}/coin_data_collector.py" "Coin data collection"
     create_cron_job "crypto-lens-cleaner" "$CLEANER_CRON" "${APP_DIR}/logs_cleaner.py" "Log files cleanup"
     
     log_success "Cron jobs configured successfully"
@@ -553,8 +550,8 @@ verify_setup() {
         fi
     done
     
-    if [[ $cron_count -eq 3 ]]; then
-        log_success "✓ All 3 cron jobs configured"
+    if [[ $cron_count -eq 2 ]]; then
+        log_success "✓ All 2 cron jobs configured"
         echo ""
         log_info "Cron Job Paths:"
         for cron_file in /etc/cron.d/crypto-lens-*; do
@@ -568,7 +565,7 @@ verify_setup() {
             fi
         done
     else
-        log_error "✗ Expected 3 cron jobs, found $cron_count"
+        log_error "✗ Expected 2 cron jobs, found $cron_count"
         return 1
     fi
     

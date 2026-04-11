@@ -90,14 +90,14 @@ Discord Alerts & S3 Archival
 
 | Script | Purpose | Frequency | Output |
 |--------|---------|-----------|--------|
-| `hourly_fetch_and_pulse.py` | Market pulse analysis | Hourly | Charts, Discord alerts, CSV data |
-| `daily_fetch_and_pulse.py` | Daily market summary | Daily | Performance reports, visualizations, S3 upload |
-| `oi_change_screener.py` | Open interest monitoring | Hourly | OI change alerts, top 20 movers |
-| `coin_data_collector.py` | Coin metadata collection | Daily | Coin database CSV, market cap data |
+| `main.py` | Script orchestrator | Every 5 minutes (cron) | Orchestrates all sub-scripts in sequence |
+| `hourly_fetch_and_pulse.py` | Market pulse analysis | Hourly (via main.py) | Charts, Discord alerts, CSV data |
+| `daily_fetch_and_pulse.py` | Daily market summary | Daily (via main.py) | Performance reports, visualizations, S3 upload |
+| `oi_change_screener.py` | Open interest monitoring | Hourly (via main.py) | OI change alerts, top 20 movers |
+| `coin_data_collector.py` | Coin metadata collection | Daily (via main.py) | Coin database CSV, market cap data |
 | `discord_integrator.py` | Webhook integration | On-demand | Message/image delivery to Discord |
 | `logger.py` | Event logging system | Continuous | Structured logs with timestamps |
-| `logs_cleaner.py` | Log maintenance | Daily | Cleanup of logs older than retention period |
-| `main.py` | Script orchestrator | Scheduled | Manages execution sequence |
+| `logs_cleaner.py` | Log maintenance | Daily (separate cron) | Cleanup of logs older than retention period |
 
 ## 🛠️ Tech Stack
 
@@ -199,20 +199,78 @@ python oi_change_screener.py
 python coin_data_collector.py
 ```
 
-**Automated execution (Linux/Unix):**
-Add to crontab for continuous monitoring:
+**Automated execution (Linux/Unix - Recommended):**
+
+The `setup.sh` script configures the application for automated execution on EC2 or Linux systems:
+
 ```bash
-# Run main script every 5 minutes
-*/5 * * * * cd /path/to/crypto-lens && python main.py
-
-# Clean logs daily at 3 PM
-0 15 * * * cd /path/to/crypto-lens && python logs_cleaner.py
-
-# Collect coin data daily at noon
-0 12 * * * cd /path/to/crypto-lens && python coin_data_collector.py
+sudo ./setup.sh
 ```
 
-## 📊 Output & Visualization
+This automatically creates:
+- **Cron jobs** for scheduled execution:
+  - `main.py` - Runs every 5 minutes, orchestrating all analysis scripts
+  - `logs_cleaner.py` - Runs daily at 3 PM to clean old log files
+  
+- **Systemd service** (`crypto-lens-init`):
+  - Runs on boot to ensure all directories and permissions are correct
+  - Recreates `/var/run/crypto-lens/` after system reboots (tmpfs cleanup)
+  - Fixes log file permissions in `/var/log/crypto-lens/`
+  
+- **Systemd tmpfiles.d configuration**:
+  - Ensures `/var/run/crypto-lens/` is recreated with proper permissions on every reboot
+  - Maintains service operational file directory even after system restart
+
+**Manual cron setup (if not using setup.sh):**
+```bash
+# Add to crontab for continuous monitoring
+# Run main script orchestrator every 5 minutes (executes all analysis scripts)
+*/5 * * * * cd /path/to/crypto-lens && /path/to/venv/bin/python3 main.py >> /var/log/crypto-lens/main.log 2>&1
+
+# Clean logs daily at 3 PM
+0 15 * * * cd /path/to/crypto-lens && /path/to/venv/bin/python3 logs_cleaner.py >> /var/log/crypto-lens/logs_cleaner.log 2>&1
+```
+
+## � Directory & Permission Persistence
+
+The application is configured to maintain directory structure and permissions across EC2 instance reboots:
+
+### Dynamic Runtime Directory (`/var/run/crypto-lens/`)
+On Linux/Unix systems, `/var/run/` is a temporary filesystem (tmpfs) that gets cleared on reboot. The setup script handles this automatically:
+
+- **systemd tmpfiles.d** (`/etc/tmpfiles.d/crypto-lens.conf`)
+  - Recreates `/var/run/crypto-lens/` on every boot
+  - Ensures proper ownership (`crypto-lens:crypto-lens`) and permissions (`755`)
+  - Runs during systemd initialization, before services start
+
+- **crypto-lens-init Service** (`/etc/systemd/system/crypto-lens-init.service`)
+  - Runs on boot before cron services
+  - Double-checks directory existence and permissions
+  - Fixes any file permissions in both runtime and log directories
+  - Ensures application can write output immediately after reboot
+
+### Log Directory (`/var/log/crypto-lens/`)
+- Persists across reboots (stored on persistent filesystem)
+- Ownership and permissions restored by `crypto-lens-init` service on boot
+- Old log files automatically cleaned by `logs_cleaner.py` based on retention policy
+
+### Verification After Reboot
+To verify persistence is working after an EC2 restart:
+```bash
+# Check runtime directory exists
+ls -la /var/run/crypto-lens/
+
+# Check log directory exists
+ls -la /var/log/crypto-lens/
+
+# Verify service status
+systemctl status crypto-lens-init
+
+# View tmpfiles.d configuration
+cat /etc/tmpfiles.d/crypto-lens.conf
+```
+
+## �📊 Output & Visualization
 
 ### Generated Outputs
 - **CSV Data Files**:
@@ -254,13 +312,15 @@ output_path = /var/run/crypto-lens/
 [schedules]
 main_cron_sched = */5 * * * *
 logs_cleaner_cron_sched = 0 15 * * *
-coin_data_collector_cron_sched = 0 12 * * *
 ```
 
 ### Key Configuration Options
 - **Log Path**: Directory for application logs
-- **Output Path**: Directory for CSV and image outputs
+- **Output Path**: Directory for CSV and image outputs (dynamic runtime directory)
 - **Cron Schedules**: Frequency of automated runs (see crontab syntax)
+  - `main_cron_sched`: Frequency for main.py (orchestrates all analysis scripts)
+  - `logs_cleaner_cron_sched`: Frequency for log cleanup
+  - Note: All analysis scripts (hourly, daily, OI screener, coin collector) run through main.py
 - **Webhook URLs**: Discord or compatible webhook endpoints
 - **AWS Region**: For S3 storage operations
 
@@ -340,6 +400,11 @@ For historical analysis beyond alerting/monitoring, data can be exported to:
 ## 🐛 Troubleshooting
 
 ### Common Issues
+
+**Directories/permissions missing after EC2 reboot**
+- Solution: Ensure `setup.sh` was run and the `crypto-lens-init` service is enabled
+- Verify: `systemctl status crypto-lens-init` and `systemctl is-enabled crypto-lens-init`
+- Check: `/etc/tmpfiles.d/crypto-lens.conf` exists and has correct content
 
 **"MARKET_PULSE_WEBHOOK not set"**
 - Solution: Add webhook URL to `.env` file as shown in configuration section
