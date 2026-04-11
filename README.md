@@ -20,57 +20,48 @@ Perfect for traders, data analysts, and crypto enthusiasts who want automated, d
 
 ### Core Monitoring Capabilities
 - **Hourly Market Pulse** - Real-time market analysis updated every hour
-  - Price movements across top cryptocurrencies
+  - Price movements across all cryptocurrencies
   - RSI sentiment analysis with visualizations
-  - Market structure and trend identification
+  - Trend identification for each coin & sentiment analysis
   - Automated Discord alerts with trend charts
 
 - **Daily Market Analysis** - Comprehensive daily market summaries
   - 24-hour price action and technical analysis
-  - Multi-timeframe trend analysis (1h, 4h, 1d, 1w)
-  - Market momentum and volatility metrics
-  - Daily performance reports sent to Discord
+  - Latest Top Gainers & Top Losers for the day
 
 - **Open Interest Screener** - Futures market intelligence
-  - Monitors OI changes across major trading pairs
-  - Identifies potential trend reversals
+  - Monitors OI changes across all trading pairs
   - Alerts on significant position accumulations
   - Tracks top 20 movers in OI percentage change
 
 - **Coin Data Collector** - Metadata and fundamental analysis
   - Fetches market cap data from CoinMarketCap API
-  - Collects technical specifications of cryptocurrencies
-  - Maintains comprehensive coin database
-  - Correlates fundamentals with price movements
+  - Categorize market cap value for each trading pair
 
 ### Data & Visualization
 - **Multiple Data Sources**
-  - Binance Spot and Futures APIs (via CCXT)
+  - Binance Futures APIs (via CCXT)
   - CoinMarketCap API for market fundamentals
   - Real-time WebSocket connections for live updates
 
 - **Grafana Dashboards**
   - Real-time market visualization
-  - Custom panels for technical indicators
-  - Time-series analysis of price and volume
-  - Historical trend analysis and backtesting
+  - Custom panels for daily & hourly sentiment analysis
+  - Real-time identification of top coins in price change & open interest
 
 - **Persistent Storage**
   - Local CSV exports for analysis
   - AWS S3 backup of latest datasets for redundancy
-  - Configurable retention policies
 
 ### Alerting & Integration
 - **Discord Webhooks**
-  - Customizable alert messages
   - Embedded market charts and visualizations
   - Real-time notifications with actionable insights
   - Flexible webhook configuration for any webhook-compatible service
 
 - **Structured Logging**
   - Comprehensive event logging for all operations
-  - Automatic log rotation and cleanup
-  - Error tracking and debugging support
+  - Automatic log cleanup
   - Audit trail for compliance
 
 ## 📊 Architecture
