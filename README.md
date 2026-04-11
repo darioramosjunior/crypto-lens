@@ -2,6 +2,9 @@
 
 A comprehensive cryptocurrency intelligence platform that monitors, analyzes, and alerts on crypto market movements in real-time. This data engineering project combines live market data collection, advanced technical analysis, and intelligent alerting to provide actionable insights into cryptocurrency markets.
 
+<img width="1568" height="835" alt="image" src="https://github.com/user-attachments/assets/79f45867-4e42-4f77-bcaf-ddd603a6ab74" />
+
+
 ## 📋 Overview
 
 Crypto-Lens is a production-ready data pipeline that:
