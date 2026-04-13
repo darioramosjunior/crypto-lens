@@ -38,6 +38,7 @@ def main():
         "coin_data_collector.py",
         "hourly_fetch_and_pulse.py",
         "daily_fetch_and_pulse.py",
+        "market_breadth.py",
         "oi_change_screener.py"
     ]
     
