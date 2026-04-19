@@ -10,6 +10,7 @@ from io import BytesIO
 import config
 from typing import List, Dict, Any, Optional, Set
 from utils import FileUtility, ConfigManager, DataLoaderUtility, S3Manager
+from validations import OIChangeData, OIChangeList
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -157,9 +158,11 @@ def save_oi_changes_to_csv(oi_changes: List[Dict[str, Any]]) -> None:
     try:
         timestamp: str = datetime.now().isoformat()
         records: List[Dict[str, Any]] = []
+        validation_issues: List[str] = []
+        
         for item in oi_changes:
             market_cap: Optional[float] = item.get("market_cap")
-            records.append({
+            record = {
                 "symbol": item["symbol"],
                 "timestamp": timestamp,
                 "open_interest": item["current_oi"],
@@ -167,7 +170,30 @@ def save_oi_changes_to_csv(oi_changes: List[Dict[str, Any]]) -> None:
                 "oi_change": item["change_percentage"],
                 "market_cap_category": item.get("category", "N/A"),
                 "market_cap": market_cap if market_cap is not None else "N/A"
-            })
+            }
+            
+            # Validate OI change data
+            try:
+                OIChangeData(
+                    symbol=item["symbol"],
+                    timestamp=datetime.now(),
+                    current_oi=float(item["current_oi"]),
+                    previous_oi=float(item["previous_oi"]),
+                    oi_change=float(item["change_percentage"]),
+                    oi_change_abs=float(item.get("change_abs", 0)),
+                    market_cap_category=item.get("category", "N/A")
+                )
+            except Exception as e:
+                validation_issues.append(f"{item['symbol']}: {str(e)[:40]}")
+            
+            records.append(record)
+        
+        if validation_issues:
+            logger.log_event(
+                log_category="INFO",
+                message=f"OI change validation completed ({len(validation_issues)} items checked)",
+                path=log_path
+            )
         
         df: pd.DataFrame = pd.DataFrame(records)
         

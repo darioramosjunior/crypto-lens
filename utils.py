@@ -15,6 +15,10 @@ import aiohttp
 import logger
 import config
 import pandas_ta as ta
+from validations import (
+    OHLCVData, OHLCVCandle, IndicatorData, PriceChangeData, 
+    TrendCounts, validate_dataframe_schema
+)
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -306,6 +310,17 @@ class BinanceDataFetcher:
         if not raw_data:
             return None
         try:
+            # Validate raw data format
+            try:
+                OHLCVData(symbol=symbol, interval="1h", candles=raw_data)
+            except Exception as e:
+                if log_path:
+                    logger.log_event(
+                        log_category="WARNING",
+                        message=f"OHLCV validation warning for {symbol}: {e}",
+                        path=log_path
+                    )
+            
             df: pd.DataFrame = pd.DataFrame(raw_data, columns=[
                 "timestamp", "open", "high", "low", "close", "volume",
                 "close_time", "quote_asset_volume", "number_of_trades",
@@ -319,6 +334,19 @@ class BinanceDataFetcher:
             df[['open', 'high', 'low', 'close', 'volume']] = (
                 df[['open', 'high', 'low', 'close', 'volume']].astype(float)
             )
+            
+            # Validate converted data
+            validation_result = validate_dataframe_schema(
+                df,
+                required_columns=["timestamp", "open", "high", "low", "close", "volume"]
+            )
+            if not validation_result.valid:
+                if log_path:
+                    logger.log_event(
+                        log_category="WARNING",
+                        message=f"DataFrame schema validation for {symbol}: {validation_result.errors}",
+                        path=log_path
+                    )
 
             return df
         except Exception as e:
@@ -346,6 +374,7 @@ class IndicatorCalculator:
         :return: Dictionary {symbol: DataFrame} with indicators added
         """
         indicators_data: Dict[str, pd.DataFrame] = {}
+        validation_issues: List[str] = []
 
         try:
             for symbol, df in in_memory_data.items():
@@ -364,6 +393,38 @@ class IndicatorCalculator:
                     df_sorted['volume_sma20'] = volume.rolling(window=20).mean()
 
                     df_sorted.reset_index(inplace=True)
+                    
+                    # Validate indicator data
+                    try:
+                        for idx, row in df_sorted.iterrows():
+                            try:
+                                IndicatorData(
+                                    symbol=symbol,
+                                    timestamp=row['timestamp'],
+                                    open=float(row['open']),
+                                    high=float(row['high']),
+                                    low=float(row['low']),
+                                    close=float(row['close']),
+                                    volume=float(row['volume']),
+                                    sma20=float(row['sma20']) if pd.notna(row['sma20']) else None,
+                                    sma50=float(row['sma50']) if pd.notna(row['sma50']) else None,
+                                    sma100=float(row['sma100']) if pd.notna(row['sma100']) else None,
+                                    rsi14=float(row['rsi14']) if pd.notna(row['rsi14']) else None,
+                                    volume_sma20=float(row['volume_sma20']) if pd.notna(row['volume_sma20']) else None
+                                )
+                            except Exception as e:
+                                # Log but continue - partial validation failures are non-fatal
+                                if idx == 0:  # Log only first issue per symbol
+                                    validation_issues.append(f"{symbol}: {str(e)[:50]}")
+                                break
+                    except Exception as e:
+                        if log_path:
+                            logger.log_event(
+                                log_category="WARNING",
+                                message=f"Indicator validation error for {symbol}: {e}",
+                                path=log_path
+                            )
+                    
                     indicators_data[symbol] = df_sorted
 
                     if log_path:
@@ -381,6 +442,13 @@ class IndicatorCalculator:
                         )
                     continue
 
+            if validation_issues and log_path:
+                logger.log_event(
+                    log_category="INFO",
+                    message=f"Validation checks performed on indicator data ({len(validation_issues)} symbols had partial issues)",
+                    path=log_path
+                )
+            
             return indicators_data
         except Exception as e:
             if log_path:

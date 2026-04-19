@@ -24,6 +24,7 @@ import config
 import logger
 from discord_integrator import send_to_discord
 from utils import FileUtility, ConfigManager, S3Manager
+from validations import MarketBreadthData
 
 
 load_dotenv()
@@ -102,6 +103,20 @@ def main() -> None:
     market_breadth: float = round((positive / total) * 100.0, 2) if total > 0 else 0.0
 
     now: str = datetime.utcnow().isoformat()
+
+    # Validate market breadth data
+    try:
+        MarketBreadthData(
+            timestamp=datetime.fromisoformat(now),
+            total_coins=total,
+            positive_coins=positive,
+            negative_coins=total - positive,
+            btc_change=btc_pct,
+            btc_dominance_change=btcd_pct
+        )
+        logger.log_event(log_category="INFO", message="Market breadth data validation passed", path=log_path)
+    except Exception as e:
+        logger.log_event(log_category="WARNING", message=f"Market breadth validation warning: {e}", path=log_path)
 
     # Create result DataFrame
     result_df: Any = pd.DataFrame([{

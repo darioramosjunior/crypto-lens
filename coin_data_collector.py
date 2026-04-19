@@ -15,6 +15,7 @@ from io import BytesIO
 import config
 from typing import List, Dict, Any, Optional
 from utils import FileUtility, ConfigManager, S3Manager
+from validations import CoinDataModel, CoinListResponse
 
 load_dotenv()
 os.umask(0o022)
@@ -79,6 +80,14 @@ def get_coins_from_binance() -> List[str]:
 
         coin_count: int = len(coins)
         logger.log_event(log_category="INFO", message=f"Successfully retrieved {coin_count} valid coins from Binance ({len(invalid_coins)} filtered out)", path=log_path)
+        
+        # Validate coin list
+        try:
+            CoinListResponse(coins=coins, count=coin_count)
+            logger.log_event(log_category="INFO", message="Coin list validation passed", path=log_path)
+        except Exception as e:
+            logger.log_event(log_category="WARNING", message=f"Coin list validation error: {e}", path=log_path)
+        
         return coins
 
     except Exception as e:
@@ -264,6 +273,8 @@ def save_coin_data(coins: List[str], market_cap_data: Dict[str, Dict[str, Any]])
 
         # Create DataFrame with proper data types
         data_list: List[Dict[str, Any]] = []
+        invalid_records: List[str] = []
+        
         for coin in coins:
             data: Dict[str, Any] = market_cap_data.get(coin, {"market_cap": "N/A", "category": "N/A"})
             market_cap: Any = data["market_cap"]
@@ -275,11 +286,31 @@ def save_coin_data(coins: List[str], market_cap_data: Dict[str, Dict[str, Any]])
                     market_cap = None
             else:
                 market_cap = None
-            data_list.append({
-                "coin": coin,
-                "market_cap_value": market_cap,
-                "market_cap_category": data["category"]
-            })
+            
+            # Validate individual coin data
+            try:
+                validated = CoinDataModel(
+                    coin=coin,
+                    market_cap=market_cap if market_cap else "N/A",
+                    category=data["category"]
+                )
+                data_list.append({
+                    "coin": validated.coin,
+                    "market_cap_value": market_cap,
+                    "market_cap_category": validated.category
+                })
+            except Exception as e:
+                logger.log_event(log_category="WARNING", message=f"Validation error for coin {coin}: {e}", path=log_path)
+                invalid_records.append(coin)
+                # Still add to data_list with defaults
+                data_list.append({
+                    "coin": coin,
+                    "market_cap_value": market_cap,
+                    "market_cap_category": data["category"]
+                })
+        
+        if invalid_records:
+            logger.log_event(log_category="WARNING", message=f"Validation issues found for {len(invalid_records)} records: {invalid_records[:5]}", path=log_path)
         
         df = pd.DataFrame(data_list)
         df.to_csv(coin_data_output_path, index=False)
@@ -287,6 +318,8 @@ def save_coin_data(coins: List[str], market_cap_data: Dict[str, Dict[str, Any]])
         logger.log_event(log_category="INFO", message=f"Successfully saved coin data to {coin_data_output_path}", path=log_path)
         print(f"\n[OK] Results saved locally to {coin_data_output_path}")
         print(f"  Total coins: {len(coins)}")
+        if invalid_records:
+            print(f"  Warnings: {len(invalid_records)} records had validation warnings")
     except Exception as e:
         logger.log_event(log_category="ERROR", message=f"Failed to save coin data locally. Error: {e}", path=log_path)
         print(f"Error saving to CSV: {e}")
