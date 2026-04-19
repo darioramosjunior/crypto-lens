@@ -3,7 +3,7 @@ Pydantic validation models for runtime data validation across all collectors/fet
 Ensures data integrity and type safety for all data operations.
 """
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 import pandas as pd
@@ -23,7 +23,8 @@ class CoinDataModel(BaseModel):
         use_enum_values = True
         validate_assignment = True
     
-    @validator('coin')
+    @field_validator('coin')
+    @classmethod
     def validate_coin_symbol(cls, v):
         """Validate coin symbol contains only ASCII alphanumeric"""
         if not all(c.isascii() and c.isalnum() for c in v):
@@ -36,12 +37,12 @@ class CoinListResponse(BaseModel):
     coins: List[str] = Field(..., min_items=1, description="List of coin symbols")
     count: Optional[int] = Field(None, ge=0, description="Total number of coins")
     
-    @root_validator
-    def validate_count(cls, values):
+    @model_validator(mode='after')
+    def validate_count(self):
         """Verify count matches list length if provided"""
-        if values.get('count') and values['count'] != len(values.get('coins', [])):
+        if self.count and self.count != len(self.coins):
             raise ValueError("Count must match length of coins list")
-        return values
+        return self
 
 
 # ============================================================================
@@ -62,19 +63,21 @@ class OHLCVCandle(BaseModel):
     taker_buy_base_volume: Optional[float] = Field(None, ge=0, description="Taker buy base volume")
     taker_buy_quote_volume: Optional[float] = Field(None, ge=0, description="Taker buy quote volume")
     
-    @validator('high')
-    def validate_high(cls, v, values):
+    @field_validator('high')
+    @classmethod
+    def validate_high(cls, v, info):
         """High should be >= low"""
-        if 'low' in values:
-            if v < values['low']:
+        if 'low' in info.data:
+            if v < info.data['low']:
                 raise ValueError("High price must be >= low price")
         return v
     
-    @validator('close')
-    def validate_close(cls, v, values):
+    @field_validator('close')
+    @classmethod
+    def validate_close(cls, v, info):
         """Close should be between high and low"""
-        if 'high' in values and 'low' in values:
-            if not (values['low'] <= v <= values['high']):
+        if 'high' in info.data and 'low' in info.data:
+            if not (info.data['low'] <= v <= info.data['high']):
                 raise ValueError("Close price must be between low and high")
         return v
 
@@ -88,7 +91,8 @@ class OHLCVData(BaseModel):
     class Config:
         arbitrary_types_allowed = True
     
-    @validator('symbol')
+    @field_validator('symbol')
+    @classmethod
     def validate_symbol(cls, v):
         """Validate symbol format"""
         if not v.isupper():
@@ -117,7 +121,8 @@ class PriceChangeData(BaseModel):
     class Config:
         validate_assignment = True
     
-    @validator('price_change')
+    @field_validator('price_change')
+    @classmethod
     def validate_price_change(cls, v):
         """Validate price change is reasonable (not inf or nan)"""
         if not (-1000 < v < 1000):  # Allow large swings but catch inf/nan
@@ -151,21 +156,21 @@ class MarketBreadthData(BaseModel):
     btc_change: Optional[float] = Field(None, description="BTC price change %")
     btc_dominance_change: Optional[float] = Field(None, description="BTC dominance change %")
     
-    @root_validator
-    def validate_totals(cls, values):
+    @model_validator(mode='after')
+    def validate_totals(self):
         """Validate that trend counts don't exceed total coins"""
-        total = values.get('total_coins', 0)
+        total = self.total_coins
         trend_total = (
-            values.get('uptrend_count', 0) +
-            values.get('downtrend_count', 0) +
-            values.get('pullback_count', 0) +
-            values.get('reversal_up_count', 0) +
-            values.get('reversal_down_count', 0) +
-            values.get('uncategorized_count', 0)
+            self.uptrend_count +
+            self.downtrend_count +
+            self.pullback_count +
+            self.reversal_up_count +
+            self.reversal_down_count +
+            self.uncategorized_count
         )
         if trend_total > total:
             raise ValueError("Sum of trend counts cannot exceed total coins")
-        return values
+        return self
 
 
 class TrendCounts(BaseModel):
@@ -202,19 +207,21 @@ class IndicatorData(BaseModel):
         regex=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized)$"
     )
     
-    @validator('high')
-    def validate_high(cls, v, values):
+    @field_validator('high')
+    @classmethod
+    def validate_high(cls, v, info):
         """High >= low and >= close"""
-        if 'low' in values and v < values['low']:
+        if 'low' in info.data and v < info.data['low']:
             raise ValueError("High must be >= low")
-        if 'close' in values and v < values['close']:
+        if 'close' in info.data and v < info.data['close']:
             raise ValueError("High must be >= close")
         return v
     
-    @validator('low')
-    def validate_low(cls, v, values):
+    @field_validator('low')
+    @classmethod
+    def validate_low(cls, v, info):
         """Low <= open, close, and high"""
-        if 'close' in values and v > values['close']:
+        if 'close' in info.data and v > info.data['close']:
             raise ValueError("Low must be <= close")
         return v
 
@@ -233,7 +240,8 @@ class OIChangeData(BaseModel):
     oi_change_abs: float = Field(..., description="Absolute OI change")
     market_cap_category: str = Field(default="N/A")
     
-    @validator('oi_change')
+    @field_validator('oi_change')
+    @classmethod
     def validate_oi_change(cls, v):
         """Validate OI change is reasonable"""
         if not (-500 < v < 500):  # Allow for large moves
@@ -258,7 +266,8 @@ class MarketCapData(BaseModel):
     market_cap: Optional[Union[float, str]] = Field(None, description="Market cap value")
     category: str = Field(default="N/A", description="Market cap category")
     
-    @validator('market_cap')
+    @field_validator('market_cap')
+    @classmethod
     def validate_market_cap(cls, v):
         """Market cap should be positive if numeric"""
         if isinstance(v, (int, float)) and v < 0:
