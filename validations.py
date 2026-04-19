@@ -85,7 +85,7 @@ class OHLCVCandle(BaseModel):
 class OHLCVData(BaseModel):
     """Validates raw OHLCV data from API"""
     symbol: str = Field(..., min_length=3, description="Trading symbol")
-    interval: str = Field(..., regex=r"^(\d+[mhd])$", description="Timeframe (e.g., 1h, 1d)")
+    interval: str = Field(..., pattern=r"^(\d+[mhd])$", description="Timeframe (e.g., 1h, 1d)")
     candles: List[Union[List, OHLCVCandle]] = Field(..., min_items=1, description="List of candles")
     
     class Config:
@@ -113,7 +113,7 @@ class PriceChangeData(BaseModel):
     price_change: float = Field(..., description="Price change percentage")
     trend_category: str = Field(
         default="N/A",
-        regex=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized|N/A)$",
+        pattern=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized|N/A)$",
         description="Trend category"
     )
     market_cap_category: str = Field(default="N/A", description="Market cap category")
@@ -204,7 +204,7 @@ class IndicatorData(BaseModel):
     volume_sma20: Optional[float] = Field(None, ge=0, description="20-period volume SMA")
     trend: Optional[str] = Field(
         None,
-        regex=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized)$"
+        pattern=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized)$"
     )
     
     @field_validator('high')
@@ -289,8 +289,8 @@ class MarketCapDataDict(BaseModel):
 
 class BinanceAPIRequest(BaseModel):
     """Validates Binance API request parameters"""
-    symbol: str = Field(..., regex=r"^[A-Z0-9]+USDT$")
-    interval: str = Field(..., regex=r"^(\d+[mhd])$")
+    symbol: str = Field(..., pattern=r"^[A-Z0-9]+USDT$")
+    interval: str = Field(..., pattern=r"^(\d+[mhd])$")
     limit: int = Field(default=200, ge=1, le=1500)
     
     class Config:
