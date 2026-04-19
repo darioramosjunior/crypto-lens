@@ -12,6 +12,7 @@ import config
 from typing import List, Dict, Any, Optional, Tuple
 import aiohttp
 from utils import FileUtility, ConfigManager, DataLoaderUtility, BinanceDataFetcher, IndicatorCalculator, MathUtility, S3Manager
+from validations import PriceChangeData, TrendCounts, MarketBreadthData
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -64,6 +65,7 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
     :return: DataFrame with symbol, timestamp, close, previous_close, price_change, trend_category, market_cap_category
     """
     price_changes = []
+    validation_issues = []
     
     try:
         for symbol, df in in_memory_data.items():
@@ -97,7 +99,7 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
             # Get market cap category
             market_cap_category = market_cap_categories.get(symbol, 'N/A')
             
-            price_changes.append({
+            price_change_record = {
                 'symbol': symbol,
                 'timestamp': latest_timestamp,
                 'close': latest_close,
@@ -105,7 +107,23 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
                 'price_change': price_change,
                 'trend_category': trend_category,
                 'market_cap_category': market_cap_category
-            })
+            }
+            
+            # Validate price change data
+            try:
+                PriceChangeData(
+                    symbol=symbol,
+                    timestamp=pd.Timestamp(latest_timestamp) if not isinstance(latest_timestamp, pd.Timestamp) else latest_timestamp,
+                    close=float(latest_close),
+                    previous_close=float(previous_close),
+                    price_change=float(price_change),
+                    trend_category=trend_category,
+                    market_cap_category=market_cap_category
+                )
+            except Exception as e:
+                validation_issues.append(f"{symbol}: {str(e)[:40]}")
+            
+            price_changes.append(price_change_record)
         
         price_changes_df = pd.DataFrame(price_changes)
         
@@ -113,6 +131,13 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
         for col in ['close', 'previous_close', 'price_change']:
             if col in price_changes_df.columns:
                 price_changes_df[col] = pd.to_numeric(price_changes_df[col], errors='coerce')
+        
+        if validation_issues:
+            logger.log_event(
+                log_category="INFO",
+                message=f"Price change validation completed ({len(validation_issues)} items checked)",
+                path=log_path
+            )
         
         # Save locally
         os.makedirs(output_dir, exist_ok=True)
