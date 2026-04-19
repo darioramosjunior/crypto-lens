@@ -168,13 +168,13 @@ def calculate_indicators_in_memory(in_memory_data):
                 df_sorted['day_change_percent'] = ((df_sorted['close'] - day_open) / day_open) * 100
                 
                 indicators_data[symbol] = df_sorted
-                logger.log_event(log_category=\"INFO\", message=f\"Successfully calculated hourly-specific indicators for symbol {symbol}\", path=log_path)
+                logger.log_event(log_category="INFO", message=f"Successfully calculated hourly-specific indicators for symbol {symbol}", path=log_path)
             except Exception as e:
-                logger.log_event(log_category=\"ERROR\", message=f\"Failed to add hourly indicators for {symbol}: {e}\", path=log_path)
+                logger.log_event(log_category="ERROR", message=f"Failed to add hourly indicators for {symbol}: {e}", path=log_path)
         
         return indicators_data
     except Exception as e:
-        logger.log_event(log_category=\"ERROR\", message=f\"Failed to process hourly indicators. Error: {e}\", path=log_path)
+        logger.log_event(log_category="ERROR", message=f"Failed to process hourly indicators. Error: {e}", path=log_path)
         return {}
 
 
