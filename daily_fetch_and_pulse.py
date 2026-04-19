@@ -157,9 +157,9 @@ def calculate_percentage(numerator, denominator):
     return MathUtility.calculate_percentage(numerator, denominator)
 
 def determine_trend(row):
-    \"\"\"
+    """
     Classify trend based on moving averages - wrapper for utility
-    \"\"\"
+    """
     return IndicatorCalculator.determine_trend(row)
 
 def generate_market_pulse_chart(trend_df):

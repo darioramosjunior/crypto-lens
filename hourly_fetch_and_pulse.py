@@ -134,24 +134,24 @@ def calculate_price_changes_with_trend(in_memory_data, indicators_data, market_c
 
 
 def calculate_percentage(numerator, denominator):
-    \"\"\"Calculate percentage between two numbers - wrapper for utility\"\"\"
+    """Calculate percentage between two numbers - wrapper for utility"""
     return MathUtility.calculate_percentage(numerator, denominator)
 
 
 def determine_trend(row):
-    \"\"\"
+    """
     Classify trend based on moving averages - wrapper for utility
-    \"\"\"
+    """
     return IndicatorCalculator.determine_trend(row)
 
 
 def calculate_indicators_in_memory(in_memory_data):
-    \"\"\"
+    """
     Calculate indicators for all symbols and store in memory
     Extended version with hourly-specific calculations (day_change_percent)
     :param in_memory_data: Dictionary {symbol: DataFrame}
     :return: Dictionary {symbol: DataFrame} with indicators added
-    \"\"\"
+    """
     # Get base indicators from utility
     indicators_data = IndicatorCalculator.calculate_indicators_in_memory(in_memory_data, log_path)
     
