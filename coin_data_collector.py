@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import boto3
 from io import BytesIO
 import config
+from typing import List, Dict, Any, Optional
 
 load_dotenv()
 os.umask(0o022)
@@ -21,10 +22,10 @@ os.umask(0o022)
 config.ensure_log_directory()
 config.ensure_output_directory()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = config.get_log_file_path("coin_data_collector")
-output_dir = config.OUTPUT_PATH
-coin_data_output_path = config.get_output_file_path("coin_data.csv")
+script_dir: str = os.path.dirname(os.path.abspath(__file__))
+log_path: str = config.get_log_file_path("coin_data_collector")
+output_dir: str = config.OUTPUT_PATH
+coin_data_output_path: str = config.get_output_file_path("coin_data.csv")
 
 # Create log file if it doesn't exist
 try:
@@ -34,22 +35,22 @@ try:
 except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
-CMC_API_KEY = os.environ.get("cmc_api_key")
+CMC_API_KEY: Optional[str] = os.environ.get("cmc_api_key")
 if not CMC_API_KEY:
     logger.log_event(log_category="WARNING", message="cmc_api_key environment variable not set. Market cap data will not be collected.", path=log_path)
 
 # AWS S3 configuration
-S3_BUCKET_NAME = "data-portfolio-2026"
-AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
+S3_BUCKET_NAME: str = "data-portfolio-2026"
+AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
 
 
-def is_valid_symbol(coin):
+def is_valid_symbol(coin: str) -> bool:
     """Check if coin symbol contains only ASCII alphanumeric characters"""
     # CMC API only accepts ASCII characters (A-Z, a-z, 0-9), not Unicode
     return all(c.isascii() and c.isalnum() for c in coin)
 
 
-def get_coins_from_binance():
+def get_coins_from_binance() -> List[str]:
     """
     Get all active futures coins from Binance
     :return: list[] of all active USDT futures coins
@@ -61,21 +62,21 @@ def get_coins_from_binance():
             }
         })
 
-        markets = binance.load_markets()
+        markets: Dict[str, Any] = binance.load_markets()
 
-        usdt_perps = [
+        usdt_perps: List[str] = [
             symbol for symbol, market in markets.items()
             if market['contract'] and market['linear'] and market['quote'] == 'USDT' and market['active']
         ]
 
         # Clean up coin symbols and filter out unicode characters
-        coins = []
-        invalid_coins = []
+        coins: List[str] = []
+        invalid_coins: List[str] = []
         for symbol in usdt_perps:
-            formatted_coin = symbol.replace("/USDT:", "")
+            formatted_coin: str = symbol.replace("/USDT:", "")
             if "-" not in formatted_coin:
                 # Only keep coins with valid ASCII alphanumeric characters
-                clean_coin = formatted_coin.replace("USDT", "")
+                clean_coin: str = formatted_coin.replace("USDT", "")
                 if is_valid_symbol(clean_coin):
                     coins.append(formatted_coin)
                 else:
@@ -84,7 +85,7 @@ def get_coins_from_binance():
         if invalid_coins:
             logger.log_event(log_category="WARNING", message=f"Filtered out {len(invalid_coins)} coins with unicode characters: {invalid_coins[:10]}", path=log_path)
 
-        coin_count = len(coins)
+        coin_count: int = len(coins)
         logger.log_event(log_category="INFO", message=f"Successfully retrieved {coin_count} valid coins from Binance ({len(invalid_coins)} filtered out)", path=log_path)
         return coins
 
@@ -93,7 +94,7 @@ def get_coins_from_binance():
         return []
 
 
-def get_market_cap_data(coins):
+def get_market_cap_data(coins: List[str]) -> Dict[str, Dict[str, Any]]:
     """
     Get market cap data from CoinMarketCap API for all coins
     :param coins: list of coin symbols
@@ -103,13 +104,13 @@ def get_market_cap_data(coins):
         logger.log_event(log_category="WARNING", message="CMC API key not set, returning empty market cap data", path=log_path)
         return {coin: {"market_cap": "N/A", "category": "N/A"} for coin in coins}
 
-    market_cap_data = {}
-    context = ssl.create_default_context(cafile=certifi.where())
+    market_cap_data: Dict[str, Dict[str, Any]] = {}
+    context: ssl.SSLContext = ssl.create_default_context(cafile=certifi.where())
 
     # All coins at this point are already validated to be ASCII alphanumeric
     # So we can proceed directly with batching
-    batch_size = 50
-    batches = [coins[i : i + batch_size] for i in range(0, len(coins), batch_size)]
+    batch_size: int = 50
+    batches: List[List[str]] = [coins[i : i + batch_size] for i in range(0, len(coins), batch_size)]
 
     print(f"Fetching market cap data for {len(coins)} coins...")
 
@@ -118,25 +119,25 @@ def get_market_cap_data(coins):
 
         # Create comma-separated symbol list (remove USDT suffix for CMC API)
         # All symbols are already validated to be ASCII alphanumeric at this point
-        symbols = ",".join([coin.replace("USDT", "") for coin in batch])
+        symbols: str = ",".join([coin.replace("USDT", "") for coin in batch])
 
         # Retry logic with exponential backoff
-        MAX_RETRIES = 5
-        base_delay = 2  # Start with 2 seconds
-        retry_count = 0
+        MAX_RETRIES: int = 5
+        base_delay: int = 2  # Start with 2 seconds
+        retry_count: int = 0
         
         while retry_count < MAX_RETRIES:
             try:
                 # Use GET request with URL parameters (CMC API v2 supports this)
                 # Smaller batch size (50) keeps URL length within limits
-                params = urllib.parse.urlencode({
+                params: str = urllib.parse.urlencode({
                     "symbol": symbols,
                     "convert": "USD",
                 })
 
-                url = f"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?{params}"
+                url: str = f"https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest?{params}"
                 
-                request = urllib.request.Request(
+                request: urllib.request.Request = urllib.request.Request(
                     url,
                     headers={
                         "Accept": "application/json",
@@ -146,7 +147,7 @@ def get_market_cap_data(coins):
 
                 # Add 30-second timeout to prevent hanging
                 with urllib.request.urlopen(request, context=context, timeout=30) as response:
-                    data = json.load(response)
+                    data: Dict[str, Any] = json.load(response)
 
                 # Process response
                 if "data" in data:
@@ -260,7 +261,7 @@ def get_market_cap_data(coins):
     return market_cap_data
 
 
-def save_coin_data(coins, market_cap_data):
+def save_coin_data(coins: List[str], market_cap_data: Dict[str, Dict[str, Any]]) -> None:
     """
     Save combined coin data to CSV locally and to S3
     :param coins: list of coins
@@ -270,10 +271,10 @@ def save_coin_data(coins, market_cap_data):
         os.makedirs(output_dir, exist_ok=True)
 
         # Create DataFrame with proper data types
-        data_list = []
+        data_list: List[Dict[str, Any]] = []
         for coin in coins:
-            data = market_cap_data.get(coin, {"market_cap": "N/A", "category": "N/A"})
-            market_cap = data["market_cap"]
+            data: Dict[str, Any] = market_cap_data.get(coin, {"market_cap": "N/A", "category": "N/A"})
+            market_cap: Any = data["market_cap"]
             # Convert market cap to float if it's not "N/A"
             if market_cap != "N/A":
                 try:
@@ -299,11 +300,12 @@ def save_coin_data(coins, market_cap_data):
         print(f"Error saving to CSV: {e}")
 
 
-def upload_dataframe_to_s3(dataframe, s3_key):
+def upload_dataframe_to_s3(dataframe: 'pd.DataFrame', s3_key: str) -> bool:
     """
     Upload DataFrame directly to S3 as CSV without saving locally
     :param dataframe: pandas DataFrame to upload
     :param s3_key: S3 key path (e.g., "coin-data/coin_data.csv")
+    :return: bool indicating success/failure
     """
     try:
         import pandas as pd
@@ -311,7 +313,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
         s3_client = boto3.client('s3', region_name=AWS_REGION)
         
         # Convert DataFrame to CSV in memory
-        csv_buffer = BytesIO()
+        csv_buffer: BytesIO = BytesIO()
         dataframe.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
         

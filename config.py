@@ -5,9 +5,10 @@ Stores default paths, cron schedules, and other global settings
 
 import os
 import configparser
+from typing import Dict, Any
 
 # Configuration defaults
-_DEFAULT_CONFIG = {
+_DEFAULT_CONFIG: Dict[str, str] = {
     "log_path": "/var/log/crypto-lens/",
     "main_cron_sched": "*/5 * * * *",
     "output_path": "/var/run/crypto-lens/",
@@ -16,12 +17,12 @@ _DEFAULT_CONFIG = {
 }
 
 # Load configuration from config.conf file
-def _load_config():
+def _load_config() -> Dict[str, str]:
     """
     Load configuration from config.conf file (INI format)
     :return: Dictionary with configuration values
     """
-    config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.conf")
+    config_file: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.conf")
     
     try:
         if os.path.exists(config_file):
@@ -29,7 +30,7 @@ def _load_config():
             config.read(config_file)
             
             # Extract values from sections
-            config_dict = {}
+            config_dict: Dict[str, str] = {}
             
             # Read paths section
             if config.has_section('paths'):
@@ -48,7 +49,7 @@ def _load_config():
                     config_dict['logs_cleaner_cron_sched'] = config.get('schedules', 'logs_cleaner_cron_sched')
             
             # Merge with defaults (defaults are fallback values)
-            final_config = _DEFAULT_CONFIG.copy()
+            final_config: Dict[str, str] = _DEFAULT_CONFIG.copy()
             final_config.update(config_dict)
             return final_config
         else:
@@ -58,26 +59,26 @@ def _load_config():
         print(f"[WARNING] Failed to load configuration from {config_file}: {e}. Using default settings.")
         return _DEFAULT_CONFIG
 
-_config = _load_config()
+_config: Dict[str, str] = _load_config()
 
 # Log path configuration
-LOG_PATH = _config.get("log_path", _DEFAULT_CONFIG["log_path"])
+LOG_PATH: str = _config.get("log_path", _DEFAULT_CONFIG["log_path"])
 
 # Cron schedule configuration
-MAIN_CRON_SCHED = _config.get("main_cron_sched", _DEFAULT_CONFIG["main_cron_sched"])
+MAIN_CRON_SCHED: str = _config.get("main_cron_sched", _DEFAULT_CONFIG["main_cron_sched"])
 
 # Output path configuration
-OUTPUT_PATH = _config.get("output_path", _DEFAULT_CONFIG["output_path"])
+OUTPUT_PATH: str = _config.get("output_path", _DEFAULT_CONFIG["output_path"])
 
 # Cron schedule configurations
-LOGS_CLEANER_CRON_SCHED = _config.get("logs_cleaner_cron_sched", _DEFAULT_CONFIG["logs_cleaner_cron_sched"])
+LOGS_CLEANER_CRON_SCHED: str = _config.get("logs_cleaner_cron_sched", _DEFAULT_CONFIG["logs_cleaner_cron_sched"])
 
-COIN_DATA_COLLECTOR_CRON_SCHED = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
+COIN_DATA_COLLECTOR_CRON_SCHED: str = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
 
 COIN_DATA_COLLECTOR_CRON_SCHED = _config.get("coin_data_collector_cron_sched", _DEFAULT_CONFIG["coin_data_collector_cron_sched"])
 
 # Ensure log directory exists
-def ensure_log_directory():
+def ensure_log_directory() -> bool:
     """Create log directory if it doesn't exist"""
     try:
         os.makedirs(LOG_PATH, exist_ok=True)
@@ -87,16 +88,16 @@ def ensure_log_directory():
         # Fallback to local logs directory
         return False
 
-def get_log_file_path(script_name):
+def get_log_file_path(script_name: str) -> str:
     """
     Get the full path for a log file based on script name
     :param script_name: Name of the script (e.g., 'coin_data_collector', 'hourly_fetch_and_pulse')
     :return: Full path to the log file
     """
-    log_filename = f"{script_name}_log.txt"
+    log_filename: str = f"{script_name}_log.txt"
     return os.path.join(LOG_PATH, log_filename)
 
-def ensure_output_directory():
+def ensure_output_directory() -> bool:
     """Create output directory if it doesn't exist"""
     try:
         os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -105,7 +106,7 @@ def ensure_output_directory():
         print(f"[WARNING] Failed to create output directory {OUTPUT_PATH}: {e}")
         return False
 
-def get_output_file_path(filename):
+def get_output_file_path(filename: str) -> str:
     """
     Get the full path for an output file
     :param filename: Name of the file (e.g., 'prices_1h.csv', 'market_pulse.png')

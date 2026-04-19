@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 import csv
 from io import BytesIO
+from typing import Optional, Any
 
 try:
     import pandas as pd
@@ -11,7 +12,7 @@ except Exception:
 try:
     from dotenv import load_dotenv
 except Exception:
-    def load_dotenv():
+    def load_dotenv() -> None:
         return None
 
 try:
@@ -31,9 +32,9 @@ os.umask(0o022)
 config.ensure_log_directory()
 config.ensure_output_directory()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = config.get_log_file_path("market_breadth")
-output_dir = config.OUTPUT_PATH
+script_dir: str = os.path.dirname(os.path.abspath(__file__))
+log_path: str = config.get_log_file_path("market_breadth")
+output_dir: str = config.OUTPUT_PATH
 
 # Create log file if it doesn't exist
 try:
@@ -44,15 +45,16 @@ except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # AWS S3 configuration
-S3_BUCKET_NAME = "data-portfolio-2026"
-AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
+S3_BUCKET_NAME: str = "data-portfolio-2026"
+AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
 
 
-def upload_dataframe_to_s3(dataframe, s3_key):
+def upload_dataframe_to_s3(dataframe: Any, s3_key: str) -> bool:
     """
     Upload DataFrame directly to S3 as CSV
     :param dataframe: pandas DataFrame to upload
     :param s3_key: S3 key path
+    :return: bool indicating success/failure
     """
     if boto3 is None:
         logger.log_event(log_category="WARNING", message=f"boto3 not installed. Skipping S3 upload for {s3_key}", path=log_path)
@@ -60,7 +62,7 @@ def upload_dataframe_to_s3(dataframe, s3_key):
 
     try:
         s3_client = boto3.client('s3', region_name=AWS_REGION)
-        csv_buffer = BytesIO()
+        csv_buffer: BytesIO = BytesIO()
         dataframe.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
         s3_client.upload_fileobj(csv_buffer, S3_BUCKET_NAME, s3_key)
@@ -73,12 +75,13 @@ def upload_dataframe_to_s3(dataframe, s3_key):
         return False
 
 
-def main():
+def main() -> None:
+    """Main function to calculate and report market breadth"""
     # Get file paths
-    prices_1d_path = config.get_output_file_path("prices_1d.csv")
-    market_breadth_csv = config.get_output_file_path("market_breadth.csv")
+    prices_1d_path: str = config.get_output_file_path("prices_1d.csv")
+    market_breadth_csv: str = config.get_output_file_path("market_breadth.csv")
 
-    webhook_url = os.getenv("MARKET_BREADTH_WEBHOOK") or os.getenv("DAY_CHANGE_WEBHOOK")
+    webhook_url: Optional[str] = os.getenv("MARKET_BREADTH_WEBHOOK") or os.getenv("DAY_CHANGE_WEBHOOK")
     if not webhook_url:
         logger.log_event(log_category="WARNING", message="MARKET_BREADTH_WEBHOOK and DAY_CHANGE_WEBHOOK are not set; message will not be sent to Discord.", path=log_path)
 
@@ -96,7 +99,7 @@ def main():
 
     try:
         # Read prices_1d.csv
-        df = pd.read_csv(prices_1d_path)
+        df: Any = pd.read_csv(prices_1d_path)
         df.columns = df.columns.str.strip()
     except Exception as e:
         logger.log_event(log_category="ERROR", message=f"Failed to read {prices_1d_path}: {e}", path=log_path)
@@ -109,28 +112,28 @@ def main():
         return
 
     # Get the latest timestamp (all rows should have the same timestamp as they're current data)
-    latest_timestamp = df['timestamp'].iloc[0]
+    latest_timestamp: Any = df['timestamp'].iloc[0]
 
     # Extract BTC and BTCDOM data
-    btc_row = df[df['symbol'] == 'BTCUSDT']
-    btcd_row = df[df['symbol'] == 'BTCDOMUSDT']
+    btc_row: Any = df[df['symbol'] == 'BTCUSDT']
+    btcd_row: Any = df[df['symbol'] == 'BTCDOMUSDT']
 
-    btc_pct = round(float(btc_row['price_change'].iloc[0]), 2) if len(btc_row) > 0 and pd.notna(btc_row['price_change'].iloc[0]) else None
-    btcd_pct = round(float(btcd_row['price_change'].iloc[0]), 2) if len(btcd_row) > 0 and pd.notna(btcd_row['price_change'].iloc[0]) else None
+    btc_pct: Optional[float] = round(float(btc_row['price_change'].iloc[0]), 2) if len(btc_row) > 0 and pd.notna(btc_row['price_change'].iloc[0]) else None
+    btcd_pct: Optional[float] = round(float(btcd_row['price_change'].iloc[0]), 2) if len(btcd_row) > 0 and pd.notna(btcd_row['price_change'].iloc[0]) else None
 
     # Exclude BTC and BTCDOM from market breadth calculation
-    excluded = {'BTCUSDT', 'BTCDOMUSDT'}
-    filtered_df = df[~df['symbol'].isin(excluded)].copy()
+    excluded: set = {'BTCUSDT', 'BTCDOMUSDT'}
+    filtered_df: Any = df[~df['symbol'].isin(excluded)].copy()
 
-    total = len(filtered_df)
-    positive = (filtered_df['price_change'] > 0).sum()
+    total: int = len(filtered_df)
+    positive: int = (filtered_df['price_change'] > 0).sum()
 
-    market_breadth = round((positive / total) * 100.0, 2) if total > 0 else 0.0
+    market_breadth: float = round((positive / total) * 100.0, 2) if total > 0 else 0.0
 
-    now = datetime.utcnow().isoformat()
+    now: str = datetime.utcnow().isoformat()
 
     # Create result DataFrame
-    result_df = pd.DataFrame([{
+    result_df: Any = pd.DataFrame([{
         'timestamp': now,
         'market_breadth_pct': market_breadth,
         'positive_count': int(positive),
@@ -154,7 +157,7 @@ def main():
     upload_dataframe_to_s3(result_df, "market_breadth/market_breadth.csv")
 
     # Prepare message for Discord
-    lines = []
+    lines: list[str] = []
     lines.append(f"Market Breadth: {market_breadth}% ({positive}/{total} coins positive)")
     if btc_pct is not None:
         lines.append(f"BTC Day Change: {btc_pct}%")
@@ -165,7 +168,7 @@ def main():
     else:
         lines.append("BTCDOM Day Change: N/A")
 
-    message = "\n".join(lines)
+    message: str = "\n".join(lines)
 
     print(message)
     logger.log_event(log_category="INFO", message=f"Market breadth summary: {message}", path=log_path)
