@@ -85,7 +85,7 @@ class OHLCVCandle(BaseModel):
 class OHLCVData(BaseModel):
     """Validates raw OHLCV data from API"""
     symbol: str = Field(..., min_length=3, description="Trading symbol")
-    interval: str = Field(..., pattern=r"^(\d+[mhd])$", description="Timeframe (e.g., 1h, 1d)")
+    interval: str = Field(..., pattern=r"^(\d+[mhdw])$", description="Timeframe (e.g., 1h, 1d, 1w)")
     candles: List[Union[List, OHLCVCandle]] = Field(..., min_items=1, description="List of candles")
     
     class Config:
@@ -207,23 +207,18 @@ class IndicatorData(BaseModel):
         pattern=r"^(uptrend|downtrend|pullback|reversal-up|reversal-down|uncategorized)$"
     )
     
-    @field_validator('high')
-    @classmethod
-    def validate_high(cls, v, info):
-        """High >= low and >= close"""
-        if 'low' in info.data and v < info.data['low']:
+    @model_validator(mode='after')
+    def validate_ohlc(self):
+        """Validate OHLC relationships after all fields are set"""
+        if self.high < self.low:
             raise ValueError("High must be >= low")
-        if 'close' in info.data and v < info.data['close']:
+        if self.high < self.close:
             raise ValueError("High must be >= close")
-        return v
-    
-    @field_validator('low')
-    @classmethod
-    def validate_low(cls, v, info):
-        """Low <= open, close, and high"""
-        if 'close' in info.data and v > info.data['close']:
+        if self.low > self.close:
             raise ValueError("Low must be <= close")
-        return v
+        if self.low > self.open:
+            raise ValueError("Low must be <= open")
+        return self
 
 
 # ============================================================================
@@ -290,7 +285,7 @@ class MarketCapDataDict(BaseModel):
 class BinanceAPIRequest(BaseModel):
     """Validates Binance API request parameters"""
     symbol: str = Field(..., pattern=r"^[A-Z0-9]+USDT$")
-    interval: str = Field(..., pattern=r"^(\d+[mhd])$")
+    interval: str = Field(..., pattern=r"^(\d+[mhdw])$")
     limit: int = Field(default=200, ge=1, le=1500)
     
     class Config:
