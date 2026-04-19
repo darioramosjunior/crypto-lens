@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 import config
 from typing import List, Dict, Any, Optional, Set
+from utils import FileUtility, ConfigManager, DataLoaderUtility, S3Manager
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -33,22 +34,13 @@ previous_top20_path: str = os.path.join(script_dir, "oi_change_top20_previous.js
 prices_csv: str = config.get_output_file_path("prices_1h.csv")
 oi_changes_csv: str = config.get_output_file_path("oi_changes_1h.csv")
 
-# Create log file if it doesn't exist
-try:
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    if not os.path.exists(log_path):
-        open(log_path, 'a').close()
-except Exception as e:
-    print(f"[WARNING] Failed to create log file {log_path}: {e}")
+# Create log file
+FileUtility.ensure_log_file_exists(log_path)
 
-# AWS S3 configuration
-S3_BUCKET_NAME: str = "data-portfolio-2026"
-AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
-
+# Configuration (centralized in ConfigManager)
 BASE_URL: str = "https://fapi.binance.com/fapi/v1"
 CURRENT_OI_ENDPOINT: str = f"{BASE_URL}/openInterest"
 HISTORICAL_OI_ENDPOINT: str = f"https://fapi.binance.com/futures/data/openInterestHist"
-RATE_LIMIT: float = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
 
 # Read webhook from environment
 webhook_url: Optional[str] = os.getenv("OI_CHANGE_WEBHOOK")
@@ -97,64 +89,11 @@ def get_previous_top20() -> Set[str]:
         return set()
 
 
-def load_category_data(coin_data_csv_path: str) -> Dict[str, str]:
-    """
-    Load market cap category information from coin_data.csv
-    Returns dict mapping coin -> market_cap_category (defaults to 'N/A' if empty)
-    :param coin_data_csv_path: Path to coin data CSV
-    :return: Dictionary mapping coin to category
-    """
-    try:
-        if os.path.exists(coin_data_csv_path):
-            df: pd.DataFrame = pd.read_csv(coin_data_csv_path)
-            df.columns = df.columns.str.strip()
-            category_map: Dict[str, str] = {}
-            for idx, row in df.iterrows():
-                coin: str = row.get('coin', '')
-                category: str = row.get('market_cap_category', '')
-                # Use 'N/A' if category is empty or NaN
-                category_map[coin] = category if (pd.notna(category) and str(category).strip()) else 'N/A'
-            logger.log_event(log_category="INFO", message=f"Loaded market cap categories for {len(category_map)} coins", path=log_path)
-            return category_map
-        else:
-            logger.log_event(log_category="WARNING", message=f"Coin data CSV not found at {coin_data_csv_path}. Using N/A for all categories.", path=log_path)
-            return {}
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Error loading market cap category data: {e}", path=log_path)
-        return {}
+# Function removed - use DataLoaderUtility.load_market_cap_categories() instead
+# load_category_data is replaced with utility method
 
-
-def load_market_cap_data(coin_data_csv_path: str) -> Dict[str, Optional[float]]:
-    """
-    Load market cap values from coin_data.csv
-    Returns dict mapping coin -> market_cap_value (float or None if empty)
-    :param coin_data_csv_path: Path to coin data CSV
-    :return: Dictionary mapping coin to market cap value
-    """
-    try:
-        if os.path.exists(coin_data_csv_path):
-            df: pd.DataFrame = pd.read_csv(coin_data_csv_path)
-            df.columns = df.columns.str.strip()
-            market_cap_map: Dict[str, Optional[float]] = {}
-            for idx, row in df.iterrows():
-                coin: str = row.get('coin', '')
-                market_cap: Any = row.get('market_cap_value', '')
-                # Convert to float if not empty, otherwise None
-                if pd.notna(market_cap) and str(market_cap).strip():
-                    try:
-                        market_cap_map[coin] = float(market_cap)
-                    except (ValueError, TypeError):
-                        market_cap_map[coin] = None
-                else:
-                    market_cap_map[coin] = None
-            logger.log_event(log_category="INFO", message=f"Loaded market cap values for {len([m for m in market_cap_map.values() if m is not None])} coins", path=log_path)
-            return market_cap_map
-        else:
-            logger.log_event(log_category="WARNING", message=f"Coin data CSV not found at {coin_data_csv_path}. Using None for all market cap values.", path=log_path)
-            return {}
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Error loading market cap value data: {e}", path=log_path)
-        return {}
+# Function removed - use DataLoaderUtility.load_market_cap_data() instead
+# load_market_cap_data is replaced with utility method
 
 
 def format_market_cap(market_cap_value: Optional[float]) -> str:
@@ -310,30 +249,8 @@ def get_hourly_price_data(symbols: List[str]) -> Dict[str, Optional[float]]:
 
 
 def upload_dataframe_to_s3(dataframe, s3_key):
-    """
-    Upload DataFrame directly to S3 as CSV
-    :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path (e.g., "oi-change/oi_changes_1h.csv")
-    """
-    try:
-        # Initialize S3 client
-        s3_client = boto3.client('s3', region_name=AWS_REGION)
-        
-        # Convert DataFrame to CSV in memory
-        csv_buffer = BytesIO()
-        dataframe.to_csv(csv_buffer, index=False)
-        csv_buffer.seek(0)
-        
-        # Upload to S3
-        s3_client.upload_fileobj(csv_buffer, S3_BUCKET_NAME, s3_key)
-        logger.log_event(log_category="INFO", message=f"Successfully uploaded {s3_key} to S3 bucket {S3_BUCKET_NAME}", path=log_path)
-        print(f"[OK] Uploaded {s3_key} to S3")
-        return True
-    
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to upload {s3_key} to S3. Error: {e}", path=log_path)
-        print(f"[ERROR] Failed to upload {s3_key} to S3: {e}")
-        return False
+    """Wrapper for S3Manager - upload DataFrame to S3"""
+    return S3Manager.upload_dataframe_to_s3(dataframe, s3_key, log_path)
 
 
 async def fetch_current_oi(session, symbol):
@@ -575,10 +492,10 @@ if __name__ == "__main__":
     print(f"Running {__file__}...")
 
     # Load market cap category and market cap values from coin_data.csv
-    category_data = load_category_data(coin_data_csv)
+    category_data = DataLoaderUtility.load_market_cap_categories(coin_data_csv, log_path)
     print(f"Loaded market cap categories for {len(category_data)} coins")
     
-    market_cap_data = load_market_cap_data(coin_data_csv)
+    market_cap_data = DataLoaderUtility.load_market_cap_data(coin_data_csv, log_path)
     print(f"Loaded market cap values for {len([m for m in market_cap_data.values() if m is not None])} coins")
 
     # Get coin list
@@ -654,5 +571,5 @@ if __name__ == "__main__":
         path=log_path
     )
     print("Done!")
-    print(f"  - OI changes uploaded to S3: s3://{S3_BUCKET_NAME}/oi-change/oi_changes_1h.csv")
+    print(f"  - OI changes uploaded to S3: s3://{ConfigManager.get_s3_bucket()}/oi-change/oi_changes_1h.csv")
     print(f"  - OI changes saved locally to: {oi_changes_csv}")

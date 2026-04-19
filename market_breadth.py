@@ -23,6 +23,7 @@ except Exception:
 import config
 import logger
 from discord_integrator import send_to_discord
+from utils import FileUtility, ConfigManager, S3Manager
 
 
 load_dotenv()
@@ -36,43 +37,13 @@ script_dir: str = os.path.dirname(os.path.abspath(__file__))
 log_path: str = config.get_log_file_path("market_breadth")
 output_dir: str = config.OUTPUT_PATH
 
-# Create log file if it doesn't exist
-try:
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    if not os.path.exists(log_path):
-        open(log_path, 'a').close()
-except Exception as e:
-    print(f"[WARNING] Failed to create log file {log_path}: {e}")
-
-# AWS S3 configuration
-S3_BUCKET_NAME: str = "data-portfolio-2026"
-AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
+# Create log file
+FileUtility.ensure_log_file_exists(log_path)
 
 
 def upload_dataframe_to_s3(dataframe: Any, s3_key: str) -> bool:
-    """
-    Upload DataFrame directly to S3 as CSV
-    :param dataframe: pandas DataFrame to upload
-    :param s3_key: S3 key path
-    :return: bool indicating success/failure
-    """
-    if boto3 is None:
-        logger.log_event(log_category="WARNING", message=f"boto3 not installed. Skipping S3 upload for {s3_key}", path=log_path)
-        return False
-
-    try:
-        s3_client = boto3.client('s3', region_name=AWS_REGION)
-        csv_buffer: BytesIO = BytesIO()
-        dataframe.to_csv(csv_buffer, index=False)
-        csv_buffer.seek(0)
-        s3_client.upload_fileobj(csv_buffer, S3_BUCKET_NAME, s3_key)
-        logger.log_event(log_category="INFO", message=f"Successfully uploaded {s3_key} to S3 bucket {S3_BUCKET_NAME}", path=log_path)
-        print(f"[OK] Uploaded {s3_key} to S3 bucket {S3_BUCKET_NAME}")
-        return True
-    except Exception as e:
-        logger.log_event(log_category="ERROR", message=f"Failed to upload {s3_key} to S3: {e}", path=log_path)
-        print(f"[ERROR] Failed to upload {s3_key} to S3: {e}")
-        return False
+    """Wrapper for S3Manager - upload DataFrame to S3"""
+    return S3Manager.upload_dataframe_to_s3(dataframe, s3_key, log_path)
 
 
 def main() -> None:

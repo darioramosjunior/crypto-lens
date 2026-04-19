@@ -4,6 +4,7 @@ import logger
 import config
 from datetime import datetime
 from typing import Optional
+from utils import FileUtility
 
 # Ensure log directory exists
 config.ensure_log_directory()
@@ -14,13 +15,8 @@ image_path: str = os.path.join(script_path, "hourly_market_pulse", "market_pulse
 webhook_url: str = ""
 now: datetime = datetime.now()
 
-# Create log file if it doesn't exist
-try:
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    if not os.path.exists(log_path):
-        open(log_path, 'a').close()
-except Exception as e:
-    print(f"[WARNING] Failed to create log file {log_path}: {e}")
+# Create log file
+FileUtility.ensure_log_file_exists(log_path)
 
 
 def send_to_discord(webhook_url: str, message: str) -> None:
