@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from io import BytesIO
 import config
+from typing import List, Dict, Any, Optional, Set
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -24,13 +25,13 @@ os.umask(0o022)
 config.ensure_log_directory()
 config.ensure_output_directory()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = config.get_log_file_path("oi_change_screener")
-coin_data_csv = config.get_output_file_path("coin_data.csv")
-output_dir = config.OUTPUT_PATH
-previous_top20_path = os.path.join(script_dir, "oi_change_top20_previous.json")
-prices_csv = config.get_output_file_path("prices_1h.csv")
-oi_changes_csv = config.get_output_file_path("oi_changes_1h.csv")
+script_dir: str = os.path.dirname(os.path.abspath(__file__))
+log_path: str = config.get_log_file_path("oi_change_screener")
+coin_data_csv: str = config.get_output_file_path("coin_data.csv")
+output_dir: str = config.OUTPUT_PATH
+previous_top20_path: str = os.path.join(script_dir, "oi_change_top20_previous.json")
+prices_csv: str = config.get_output_file_path("prices_1h.csv")
+oi_changes_csv: str = config.get_output_file_path("oi_changes_1h.csv")
 
 # Create log file if it doesn't exist
 try:
@@ -41,16 +42,16 @@ except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # AWS S3 configuration
-S3_BUCKET_NAME = "data-portfolio-2026"
-AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
+S3_BUCKET_NAME: str = "data-portfolio-2026"
+AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
 
-BASE_URL = "https://fapi.binance.com/fapi/v1"
-CURRENT_OI_ENDPOINT = f"{BASE_URL}/openInterest"
-HISTORICAL_OI_ENDPOINT = f"https://fapi.binance.com/futures/data/openInterestHist"
-RATE_LIMIT = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
+BASE_URL: str = "https://fapi.binance.com/fapi/v1"
+CURRENT_OI_ENDPOINT: str = f"{BASE_URL}/openInterest"
+HISTORICAL_OI_ENDPOINT: str = f"https://fapi.binance.com/futures/data/openInterestHist"
+RATE_LIMIT: float = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
 
 # Read webhook from environment
-webhook_url = os.getenv("OI_CHANGE_WEBHOOK")
+webhook_url: Optional[str] = os.getenv("OI_CHANGE_WEBHOOK")
 
 if not webhook_url:
     logger.log_event(
@@ -60,15 +61,15 @@ if not webhook_url:
     )
 
 
-def get_coins():
+def get_coins() -> List[str]:
     """
     Get the list of active coins from coin_data.csv
     :return: list[]
     """
     try:
-        df = pd.read_csv(coin_data_csv)
+        df: pd.DataFrame = pd.read_csv(coin_data_csv)
         df.columns = df.columns.str.strip()
-        coin_list = df['coin'].tolist()
+        coin_list: List[str] = df['coin'].tolist()
         logger.log_event(log_category="INFO", message=f"Successfully retrieved {len(coin_list)} coins from coin_data.csv", path=log_path)
         return coin_list
     except Exception as e:
@@ -76,7 +77,7 @@ def get_coins():
         return []
 
 
-def get_previous_top20():
+def get_previous_top20() -> Set[str]:
     """
     Get the previous top 20 results from file
     :return: set of symbol names, or empty set if file doesn't exist
@@ -84,8 +85,8 @@ def get_previous_top20():
     try:
         if os.path.exists(previous_top20_path):
             with open(previous_top20_path, 'r') as file:
-                data = json.load(file)
-                previous_symbols = set(data.get("symbols", []))
+                data: Dict[str, Any] = json.load(file)
+                previous_symbols: Set[str] = set(data.get("symbols", []))
                 logger.log_event(log_category="INFO", message=f"Retrieved {len(previous_symbols)} previous top 20 symbols", path=log_path)
                 return previous_symbols
         else:
@@ -96,19 +97,21 @@ def get_previous_top20():
         return set()
 
 
-def load_category_data(coin_data_csv_path):
+def load_category_data(coin_data_csv_path: str) -> Dict[str, str]:
     """
     Load market cap category information from coin_data.csv
     Returns dict mapping coin -> market_cap_category (defaults to 'N/A' if empty)
+    :param coin_data_csv_path: Path to coin data CSV
+    :return: Dictionary mapping coin to category
     """
     try:
         if os.path.exists(coin_data_csv_path):
-            df = pd.read_csv(coin_data_csv_path)
+            df: pd.DataFrame = pd.read_csv(coin_data_csv_path)
             df.columns = df.columns.str.strip()
-            category_map = {}
+            category_map: Dict[str, str] = {}
             for idx, row in df.iterrows():
-                coin = row.get('coin', '')
-                category = row.get('market_cap_category', '')
+                coin: str = row.get('coin', '')
+                category: str = row.get('market_cap_category', '')
                 # Use 'N/A' if category is empty or NaN
                 category_map[coin] = category if (pd.notna(category) and str(category).strip()) else 'N/A'
             logger.log_event(log_category="INFO", message=f"Loaded market cap categories for {len(category_map)} coins", path=log_path)
@@ -121,19 +124,21 @@ def load_category_data(coin_data_csv_path):
         return {}
 
 
-def load_market_cap_data(coin_data_csv_path):
+def load_market_cap_data(coin_data_csv_path: str) -> Dict[str, Optional[float]]:
     """
     Load market cap values from coin_data.csv
     Returns dict mapping coin -> market_cap_value (float or None if empty)
+    :param coin_data_csv_path: Path to coin data CSV
+    :return: Dictionary mapping coin to market cap value
     """
     try:
         if os.path.exists(coin_data_csv_path):
-            df = pd.read_csv(coin_data_csv_path)
+            df: pd.DataFrame = pd.read_csv(coin_data_csv_path)
             df.columns = df.columns.str.strip()
-            market_cap_map = {}
+            market_cap_map: Dict[str, Optional[float]] = {}
             for idx, row in df.iterrows():
-                coin = row.get('coin', '')
-                market_cap = row.get('market_cap_value', '')
+                coin: str = row.get('coin', '')
+                market_cap: Any = row.get('market_cap_value', '')
                 # Convert to float if not empty, otherwise None
                 if pd.notna(market_cap) and str(market_cap).strip():
                     try:
@@ -152,16 +157,18 @@ def load_market_cap_data(coin_data_csv_path):
         return {}
 
 
-def format_market_cap(market_cap_value):
+def format_market_cap(market_cap_value: Optional[float]) -> str:
     """
     Format market cap value to human-readable format (M, B, T, etc.)
     e.g., 1500000000 -> "1.50B", 50000000 -> "50.00M"
     Returns "N/A" if market_cap_value is None or 0
+    :param market_cap_value: Market cap value in USD
+    :return: Formatted string representation
     """
     if market_cap_value is None or market_cap_value == 0:
         return "N/A"
     
-    abs_value = abs(market_cap_value)
+    abs_value: float = abs(market_cap_value)
     
     if abs_value >= 1e12:
         return f"${market_cap_value / 1e12:.2f}T"
@@ -175,13 +182,14 @@ def format_market_cap(market_cap_value):
         return f"${market_cap_value:.2f}"
 
 
-def save_current_top20(top_oi_changes):
+def save_current_top20(top_oi_changes: List[Dict[str, Any]]) -> None:
     """
     Save the current top 20 results to file for next run
     :param top_oi_changes: list of current top OI changes
+    :return: None
     """
     try:
-        symbols_data = [
+        symbols_data: List[Dict[str, Any]] = [
             {
                 "symbol": item["symbol"],
                 "category": item.get("category", "N/A"),
@@ -189,7 +197,7 @@ def save_current_top20(top_oi_changes):
             }
             for item in top_oi_changes[:20]
         ]
-        data = {
+        data: Dict[str, Any] = {
             "symbols": [item["symbol"] for item in symbols_data],
             "symbols_with_category": symbols_data,
             "timestamp": datetime.now().isoformat()
@@ -201,16 +209,17 @@ def save_current_top20(top_oi_changes):
         logger.log_event(log_category="ERROR", message=f"Failed to save current top 20. Error={e}", path=log_path)
 
 
-def save_oi_changes_to_csv(oi_changes):
+def save_oi_changes_to_csv(oi_changes: List[Dict[str, Any]]) -> None:
     """
     Save all OI changes to oi_changes_1h.csv locally and upload to S3
     :param oi_changes: list of all OI change records
+    :return: None
     """
     try:
-        timestamp = datetime.now().isoformat()
-        records = []
+        timestamp: str = datetime.now().isoformat()
+        records: List[Dict[str, Any]] = []
         for item in oi_changes:
-            market_cap = item.get("market_cap")
+            market_cap: Optional[float] = item.get("market_cap")
             records.append({
                 "symbol": item["symbol"],
                 "timestamp": timestamp,
@@ -221,7 +230,7 @@ def save_oi_changes_to_csv(oi_changes):
                 "market_cap": market_cap if market_cap is not None else "N/A"
             })
         
-        df = pd.DataFrame(records)
+        df: pd.DataFrame = pd.DataFrame(records)
         
         # Ensure numeric columns are float type
         for col in ['open_interest', 'previous_open_interest', 'oi_change']:
@@ -239,13 +248,13 @@ def save_oi_changes_to_csv(oi_changes):
         logger.log_event(log_category="ERROR", message=f"Failed to save OI changes to CSV. Error={e}", path=log_path)
 
 
-def get_hourly_price_data(symbols):
+def get_hourly_price_data(symbols: List[str]) -> Dict[str, Optional[float]]:
     """
     Get price change data from prices_1h.csv
     :param symbols: list of symbols to fetch price data for
     :return: dict with symbol -> {price_change_percentage}
     """
-    price_data = {}
+    price_data: Dict[str, Optional[float]] = {}
     
     try:
         if not os.path.exists(prices_csv):

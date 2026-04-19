@@ -9,11 +9,12 @@ import matplotlib.pyplot as plt
 from scipy.stats import skew
 from io import BytesIO
 import config
+from typing import List, Dict, Any, Optional, Tuple
+import aiohttp
 
 if sys.platform.startswith('win'):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-import aiohttp
 import time
 import pandas_ta as ta
 from discord_integrator import upload_to_discord
@@ -27,14 +28,14 @@ os.umask(0o022)
 config.ensure_log_directory()
 config.ensure_output_directory()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = config.get_log_file_path("hourly_fetch_and_pulse")
-coin_data_path = config.get_output_file_path("coin_data.csv")
-output_dir = config.OUTPUT_PATH
-market_pulse_image_path = config.get_output_file_path("market_pulse.png")
-rsi_sentiment_image_path = config.get_output_file_path("rsi_sentiment.png")
-prices_1h_path = config.get_output_file_path("prices_1h.csv")
-trend_1h_path = config.get_output_file_path("coin_trend_1h.csv")
+script_dir: str = os.path.dirname(os.path.abspath(__file__))
+log_path: str = config.get_log_file_path("hourly_fetch_and_pulse")
+coin_data_path: str = config.get_output_file_path("coin_data.csv")
+output_dir: str = config.OUTPUT_PATH
+market_pulse_image_path: str = config.get_output_file_path("market_pulse.png")
+rsi_sentiment_image_path: str = config.get_output_file_path("rsi_sentiment.png")
+prices_1h_path: str = config.get_output_file_path("prices_1h.csv")
+trend_1h_path: str = config.get_output_file_path("coin_trend_1h.csv")
 
 # Create log file if it doesn't exist
 try:
@@ -45,28 +46,28 @@ except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # Read webhook from environment
-discord_webhook_url = os.getenv("MARKET_PULSE_WEBHOOK")
+discord_webhook_url: Optional[str] = os.getenv("MARKET_PULSE_WEBHOOK")
 if not discord_webhook_url:
     logger.log_event(log_category="WARNING", message="MARKET_PULSE_WEBHOOK not set; using fallback hard-coded webhook. Consider setting MARKET_PULSE_WEBHOOK in .env or CI secrets.", path=log_path)
 
 # AWS S3 configuration
-S3_BUCKET_NAME = "data-portfolio-2026"
-AWS_REGION = os.getenv("AWS_REGION", "ap-southeast-2")
+S3_BUCKET_NAME: str = "data-portfolio-2026"
+AWS_REGION: str = os.getenv("AWS_REGION", "ap-southeast-2")
 
-BASE_URL = "https://fapi.binance.com/fapi/v1/klines"
-INTERVAL = "1h"
-LIMIT = 200
-RATE_LIMIT = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
+BASE_URL: str = "https://fapi.binance.com/fapi/v1/klines"
+INTERVAL: str = "1h"
+LIMIT: int = 200
+RATE_LIMIT: float = 1000 / 60  # Binance Futures limit: 1200 reqs per minute => ~20 reqs/sec safe
 
 
-def get_coins():
+def get_coins() -> List[str]:
     """
     Get the list of active coins from coin_data.csv
     :return: list[]
     """
     try:
-        df = pd.read_csv(coin_data_path)
-        coin_list = df['coin'].tolist()
+        df: pd.DataFrame = pd.read_csv(coin_data_path)
+        coin_list: List[str] = df['coin'].tolist()
         logger.log_event(log_category="INFO", message="Successfully retrieved coin list from coin_data.csv", path=log_path)
         return coin_list
     except Exception as e:
@@ -74,18 +75,18 @@ def get_coins():
         return []
 
 
-def load_market_cap_categories():
+def load_market_cap_categories() -> Dict[str, str]:
     """
     Load market cap categories from coin_data.csv
     :return: dict mapping coin -> category
     """
     try:
-        df = pd.read_csv(coin_data_path)
+        df: pd.DataFrame = pd.read_csv(coin_data_path)
         df.columns = df.columns.str.strip()
-        category_map = {}
+        category_map: Dict[str, str] = {}
         for idx, row in df.iterrows():
-            coin = row.get('coin', '')
-            category = row.get('market_cap_category', '')
+            coin: str = row.get('coin', '')
+            category: str = row.get('market_cap_category', '')
             category_map[coin] = category if (pd.notna(category) and str(category).strip()) else 'N/A'
         logger.log_event(log_category="INFO", message=f"Loaded market cap categories for {len(category_map)} coins", path=log_path)
         return category_map
@@ -94,11 +95,14 @@ def load_market_cap_categories():
         return {}
 
 
-async def fetch_ohlcv(session, symbol):
+async def fetch_ohlcv(session: aiohttp.ClientSession, symbol: str) -> Tuple[str, Optional[List[List[Any]]]]:
     """
     Fetch OHLCV data for a single symbol
+    :param session: aiohttp ClientSession
+    :param symbol: str - Symbol to fetch
+    :return: Tuple of (symbol, data or None)
     """
-    params = {
+    params: Dict[str, Any] = {
         "symbol": symbol,
         "interval": INTERVAL,
         "limit": LIMIT
@@ -106,7 +110,7 @@ async def fetch_ohlcv(session, symbol):
     try:
         async with session.get(BASE_URL, params=params, timeout=10) as response:
             if response.status == 200:
-                data = await response.json()
+                data: List[List[Any]] = await response.json()
                 logger.log_event(log_category="INFO", message=f"Successfully fetched OHLCV for symbol {symbol}", path=log_path)
                 return symbol, data
             else:
@@ -117,32 +121,38 @@ async def fetch_ohlcv(session, symbol):
         return symbol, None
 
 
-async def get_coin_data(symbols, max_concurrent=20):
+async def get_coin_data(symbols: List[str], max_concurrent: int = 20) -> Dict[str, Optional[List[List[Any]]]]:
     """
     Async fetch OHLCV data for all symbols
+    :param symbols: List of symbols
+    :param max_concurrent: Maximum concurrent requests
+    :return: Dictionary mapping symbol to data
     """
-    connector = aiohttp.TCPConnector(limit=max_concurrent)
-    timeout = aiohttp.ClientTimeout(total=30)
+    connector: aiohttp.TCPConnector = aiohttp.TCPConnector(limit=max_concurrent)
+    timeout: aiohttp.ClientTimeout = aiohttp.ClientTimeout(total=30)
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        sem = asyncio.Semaphore(max_concurrent)
+        sem: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def sem_task(symbol):
+        async def sem_task(symbol: str) -> Tuple[str, Optional[List[List[Any]]]]:
             async with sem:
                 return await fetch_ohlcv(session, symbol)
 
-        tasks = [sem_task(symbol) for symbol in symbols]
-        results = await asyncio.gather(*tasks)
+        tasks: List[asyncio.Task] = [sem_task(symbol) for symbol in symbols]
+        results: List[Tuple[str, Optional[List[List[Any]]]]] = await asyncio.gather(*tasks)
         return dict(results)
 
 
-def parse_raw_data_to_dataframe(symbol, raw_data):
+def parse_raw_data_to_dataframe(symbol: str, raw_data: Optional[List[List[Any]]]) -> Optional[pd.DataFrame]:
     """
     Convert raw API response to DataFrame with proper formatting
+    :param symbol: str - Symbol name
+    :param raw_data: List of raw data or None
+    :return: DataFrame or None
     """
     if not raw_data:
         return None
     try:
-        df = pd.DataFrame(raw_data, columns=[
+        df: pd.DataFrame = pd.DataFrame(raw_data, columns=[
             "timestamp", "open", "high", "low", "close", "volume",
             "close_time", "quote_asset_volume", "number_of_trades",
             "taker_buy_base_volume", "taker_buy_quote_volume", "ignore"

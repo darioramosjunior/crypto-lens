@@ -1,19 +1,20 @@
 import os
 from glob import glob
 import config
+from typing import List
 
-script_path = os.path.dirname(os.path.abspath(__file__))
-logs_path = config.LOG_PATH
+script_path: str = os.path.dirname(os.path.abspath(__file__))
+logs_path: str = config.LOG_PATH
 
 
-def delete_content():
+def delete_content() -> None:
     """Delete content of all log files in the configured log path"""
     if not os.path.exists(logs_path):
         print(f"[WARNING] Log path {logs_path} does not exist. No logs to clean.")
         return
     
     # Get both .txt and .log files
-    log_files = glob(os.path.join(logs_path, "*.txt")) + glob(os.path.join(logs_path, "*.log"))
+    log_files: List[str] = glob(os.path.join(logs_path, "*.txt")) + glob(os.path.join(logs_path, "*.log"))
     if not log_files:
         print(f"[INFO] No log files found in {logs_path}")
         return

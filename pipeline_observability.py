@@ -8,6 +8,7 @@ import os
 import re
 from datetime import datetime
 from collections import defaultdict
+from typing import Optional, Dict, List, Any
 
 try:
     import requests
@@ -17,7 +18,7 @@ except ImportError:
 try:
     from dotenv import load_dotenv
 except Exception:
-    def load_dotenv():
+    def load_dotenv() -> None:
         return None
 
 import config
@@ -29,8 +30,8 @@ os.umask(0o022)
 # Ensure log directory exists
 config.ensure_log_directory()
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-log_path = config.get_log_file_path("pipeline_observability")
+script_dir: str = os.path.dirname(os.path.abspath(__file__))
+log_path: str = config.get_log_file_path("pipeline_observability")
 
 # Create log file if it doesn't exist
 try:
@@ -41,7 +42,7 @@ except Exception as e:
     print(f"[WARNING] Failed to create log file {log_path}: {e}")
 
 # Pipeline scripts to monitor
-PIPELINE_SCRIPTS = [
+PIPELINE_SCRIPTS: List[str] = [
     "coin_data_collector",
     "daily_fetch_and_pulse",
     "hourly_fetch_and_pulse",
@@ -50,7 +51,7 @@ PIPELINE_SCRIPTS = [
 ]
 
 # Discord webhook from environment
-WEBHOOK_URL = os.getenv("PIPELINE_ERRORS")
+WEBHOOK_URL: Optional[str] = os.getenv("PIPELINE_ERRORS")
 
 if not WEBHOOK_URL:
     logger.log_event(
@@ -60,7 +61,7 @@ if not WEBHOOK_URL:
     )
 
 
-def parse_log_entry(log_line):
+def parse_log_entry(log_line: str) -> Optional[Dict[str, Any]]:
     """
     Parse a single log entry into its components
     Format: YYYY-MM-DD HH:MM:SS.MMMMMM, CATEGORY, MESSAGE
@@ -69,17 +70,17 @@ def parse_log_entry(log_line):
     """
     try:
         # Split by first two commas to extract timestamp and category
-        parts = log_line.split(", ", 2)
+        parts: List[str] = log_line.split(", ", 2)
         if len(parts) < 3:
             return None
 
-        timestamp_str = parts[0].strip()
-        category = parts[1].strip()
-        message = parts[2].strip()
+        timestamp_str: str = parts[0].strip()
+        category: str = parts[1].strip()
+        message: str = parts[2].strip()
 
         # Parse the timestamp
         try:
-            timestamp = datetime.fromisoformat(timestamp_str)
+            timestamp: datetime = datetime.fromisoformat(timestamp_str)
         except ValueError:
             # Try alternative format in case of milliseconds
             timestamp = datetime.strptime(timestamp_str.split('.')[0], "%Y-%m-%d %H:%M:%S")
@@ -93,25 +94,25 @@ def parse_log_entry(log_line):
         return None
 
 
-def read_log_file(script_name):
+def read_log_file(script_name: str) -> List[Dict[str, Any]]:
     """
     Read and parse log file for a specific script
     :param script_name: str - name of the script (e.g., "coin_data_collector")
     :return: list of parsed log entries
     """
-    log_file_path = config.get_log_file_path(script_name)
+    log_file_path: str = config.get_log_file_path(script_name)
 
     if not os.path.exists(log_file_path):
         return []
 
     try:
         with open(log_file_path, 'r') as f:
-            lines = f.readlines()
+            lines: List[str] = f.readlines()
 
-        parsed_logs = []
+        parsed_logs: List[Dict[str, Any]] = []
         for line in lines:
             if line.strip():
-                parsed_entry = parse_log_entry(line.strip())
+                parsed_entry: Optional[Dict[str, Any]] = parse_log_entry(line.strip())
                 if parsed_entry:
                     parsed_logs.append(parsed_entry)
 
@@ -125,7 +126,7 @@ def read_log_file(script_name):
         return []
 
 
-def get_latest_run_logs(script_name, parsed_logs):
+def get_latest_run_logs(script_name: str, parsed_logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Extract logs from the latest run of a script
     A new run is indicated by an INFO log message containing "Running"
@@ -137,7 +138,7 @@ def get_latest_run_logs(script_name, parsed_logs):
         return []
 
     # Find the index of the latest "Running" message
-    latest_run_start_idx = -1
+    latest_run_start_idx: int = -1
     for idx, log_entry in enumerate(reversed(parsed_logs)):
         if log_entry["category"] == "INFO" and "Running" in log_entry["message"]:
             latest_run_start_idx = len(parsed_logs) - 1 - idx
@@ -147,7 +148,7 @@ def get_latest_run_logs(script_name, parsed_logs):
     if latest_run_start_idx == -1:
         if parsed_logs:
             # Return all logs from the last timestamp
-            latest_time = parsed_logs[-1]["timestamp"]
+            latest_time: datetime = parsed_logs[-1]["timestamp"]
             # Get all logs from the same timestamp
             latest_run_logs = [
                 log for log in parsed_logs
