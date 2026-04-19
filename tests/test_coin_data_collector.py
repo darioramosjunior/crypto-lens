@@ -192,9 +192,9 @@ class TestMarketCapDataProcessing:
         
         # Boundary values
         assert categorize_market_cap(1_000_000_000_000) == "mega"
-        assert categorize_market_cap(99_999_999_999) == "large"
-        assert categorize_market_cap(100_000_000_000) == "large"
-        assert categorize_market_cap(10_000_000_000) == "mid"
+        assert categorize_market_cap(99_999_999_999) == "mid"  # 99.9B is below 100B threshold
+        assert categorize_market_cap(100_000_000_000) == "large"  # Exactly 100B
+        assert categorize_market_cap(10_000_000_000) == "mid"  # Exactly 10B
 
 
 class TestBatchProcessing:
