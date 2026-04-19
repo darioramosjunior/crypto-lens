@@ -1,6 +1,7 @@
 """
 Unit tests for utility functions in utils.py
 Tests critical functions: FileUtility, ConfigManager, DataLoaderUtility
+Also includes validation tests for pydantic models
 """
 
 import pytest
@@ -11,11 +12,13 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 import pandas as pd
 import sys
+from datetime import datetime, timedelta
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import FileUtility, ConfigManager, DataLoaderUtility, MathUtility
+from utils import FileUtility, ConfigManager, DataLoaderUtility, MathUtility, BinanceDataFetcher, IndicatorCalculator
+from validations import OHLCVCandle, IndicatorData, validate_dataframe_schema
 
 
 class TestFileUtility:
@@ -314,6 +317,259 @@ class TestMathUtility:
         
         result = MathUtility.calculate_price_change_percent(100, np.nan)
         assert result is None
+
+
+# ============================================================================
+# BinanceDataFetcher Tests with Validation
+# ============================================================================
+
+class TestBinanceDataFetcherWithValidation:
+    """Test suite for BinanceDataFetcher with pydantic validation"""
+
+    def setup_method(self):
+        """Create temporary directory for testing"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.log_file = os.path.join(self.temp_dir, "test_log.txt")
+
+    def teardown_method(self):
+        """Clean up temporary directory after testing"""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_parse_raw_data_with_valid_ohlcv(self):
+        """Test parsing valid OHLCV data"""
+        raw_data = [
+            [1704067200000, "45000", "45500", "44500", "45200", "1000000", 
+             1704070800000, "45200000000", 100, "500000", "225000000", "0"],
+            [1704070800000, "45200", "45700", "45000", "45500", "1100000", 
+             1704074400000, "50050000000", 110, "550000", "247750000", "0"]
+        ]
+        
+        df = BinanceDataFetcher.parse_raw_data_to_dataframe("BTCUSDT", raw_data, self.log_file)
+        
+        assert df is not None
+        assert len(df) == 2
+        assert 'timestamp' in df.columns
+        assert 'close' in df.columns
+        assert float(df['close'].iloc[0]) == 45200.0
+
+    def test_parse_raw_data_with_none_input(self):
+        """Test parsing None data returns None"""
+        df = BinanceDataFetcher.parse_raw_data_to_dataframe("BTCUSDT", None, self.log_file)
+        
+        assert df is None
+
+    def test_parse_raw_data_with_empty_list(self):
+        """Test parsing empty list returns None"""
+        df = BinanceDataFetcher.parse_raw_data_to_dataframe("BTCUSDT", [], self.log_file)
+        
+        assert df is None
+
+    def test_parse_raw_data_converts_timestamps(self):
+        """Test that timestamps are properly converted"""
+        raw_data = [
+            [1704067200000, "45000", "45500", "44500", "45200", "1000000", 
+             1704070800000, "45200000000", 100, "500000", "225000000", "0"]
+        ]
+        
+        df = BinanceDataFetcher.parse_raw_data_to_dataframe("BTCUSDT", raw_data, self.log_file)
+        
+        assert pd.api.types.is_datetime64_any_dtype(df['timestamp'])
+
+    def test_parse_raw_data_ensures_numeric_columns(self):
+        """Test that numeric columns are properly typed"""
+        raw_data = [
+            [1704067200000, "45000", "45500", "44500", "45200", "1000000", 
+             1704070800000, "45200000000", 100, "500000", "225000000", "0"]
+        ]
+        
+        df = BinanceDataFetcher.parse_raw_data_to_dataframe("BTCUSDT", raw_data, self.log_file)
+        
+        numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+        for col in numeric_cols:
+            assert pd.api.types.is_numeric_dtype(df[col])
+
+
+# ============================================================================
+# IndicatorCalculator Tests with Validation
+# ============================================================================
+
+class TestIndicatorCalculatorWithValidation:
+    """Test suite for IndicatorCalculator with pydantic validation"""
+
+    def setup_method(self):
+        """Create sample data for testing"""
+        self.temp_dir = tempfile.mkdtemp()
+        self.log_file = os.path.join(self.temp_dir, "test_log.txt")
+        
+        # Create sample OHLCV data
+        base_date = datetime.now()
+        dates = [base_date - timedelta(hours=i) for i in range(100)]
+        dates.reverse()
+        
+        self.sample_data = {
+            'BTCUSDT': pd.DataFrame({
+                'timestamp': dates,
+                'open': [45000 + i*10 for i in range(100)],
+                'high': [45500 + i*10 for i in range(100)],
+                'low': [44500 + i*10 for i in range(100)],
+                'close': [45200 + i*10 for i in range(100)],
+                'volume': [1000000 + i*1000 for i in range(100)]
+            })
+        }
+
+    def teardown_method(self):
+        """Clean up temporary directory after testing"""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_calculate_indicators_returns_dict(self):
+        """Test that calculate_indicators_in_memory returns dictionary"""
+        result = IndicatorCalculator.calculate_indicators_in_memory(self.sample_data, self.log_file)
+        
+        assert isinstance(result, dict)
+        assert 'BTCUSDT' in result
+
+    def test_calculated_indicators_have_sma_columns(self):
+        """Test that calculated indicators include SMA columns"""
+        result = IndicatorCalculator.calculate_indicators_in_memory(self.sample_data, self.log_file)
+        
+        df = result['BTCUSDT']
+        assert 'sma20' in df.columns
+        assert 'sma50' in df.columns
+        assert 'sma100' in df.columns
+
+    def test_calculated_indicators_have_rsi_column(self):
+        """Test that calculated indicators include RSI column"""
+        result = IndicatorCalculator.calculate_indicators_in_memory(self.sample_data, self.log_file)
+        
+        df = result['BTCUSDT']
+        assert 'rsi14' in df.columns
+
+    def test_sma_values_are_valid(self):
+        """Test that SMA values are calculated correctly"""
+        result = IndicatorCalculator.calculate_indicators_in_memory(self.sample_data, self.log_file)
+        
+        df = result['BTCUSDT']
+        # First 19 rows should be NaN (not enough data)
+        assert df['sma20'].isna().sum() >= 19
+        # Rows after should have values
+        assert df['sma20'].iloc[-1] > 0
+
+    def test_rsi_values_in_valid_range(self):
+        """Test that RSI values are between 0 and 100"""
+        result = IndicatorCalculator.calculate_indicators_in_memory(self.sample_data, self.log_file)
+        
+        df = result['BTCUSDT']
+        valid_rsi = df['rsi14'].dropna()
+        
+        assert (valid_rsi >= 0).all()
+        assert (valid_rsi <= 100).all()
+
+    def test_determine_trend_with_uptrend(self):
+        """Test trend determination with uptrend data"""
+        row = pd.Series({
+            'sma20': 100,
+            'sma50': 80,
+            'sma100': 60
+        })
+        
+        trend = IndicatorCalculator.determine_trend(row)
+        assert trend == 'uptrend'
+
+    def test_determine_trend_with_downtrend(self):
+        """Test trend determination with downtrend data"""
+        row = pd.Series({
+            'sma20': 60,
+            'sma50': 80,
+            'sma100': 100
+        })
+        
+        trend = IndicatorCalculator.determine_trend(row)
+        assert trend == 'downtrend'
+
+    def test_determine_trend_with_nan_values(self):
+        """Test trend determination with NaN values"""
+        row = pd.Series({
+            'sma20': float('nan'),
+            'sma50': 80,
+            'sma100': 100
+        })
+        
+        trend = IndicatorCalculator.determine_trend(row)
+        assert trend == 'uncategorized'
+
+
+# ============================================================================
+# DataFrame Schema Validation Tests
+# ============================================================================
+
+class TestDataframeSchemaValidation:
+    """Test suite for DataFrame schema validation"""
+
+    def test_validate_ohlcv_dataframe_schema(self):
+        """Test schema validation for OHLCV DataFrame"""
+        df = pd.DataFrame({
+            'timestamp': [datetime.now()],
+            'open': [45000.0],
+            'high': [45500.0],
+            'low': [44500.0],
+            'close': [45200.0],
+            'volume': [1000000.0]
+        })
+        
+        result = validate_dataframe_schema(
+            df,
+            required_columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+        )
+        
+        assert result.valid is True
+        assert result.validated_count == 1
+
+    def test_validate_price_change_dataframe_schema(self):
+        """Test schema validation for price change DataFrame"""
+        df = pd.DataFrame({
+            'symbol': ['BTCUSDT'],
+            'timestamp': [datetime.now()],
+            'close': [45200.0],
+            'previous_close': [44000.0],
+            'price_change': [2.73],
+            'trend_category': ['uptrend'],
+            'market_cap_category': ['Large Cap']
+        })
+        
+        result = validate_dataframe_schema(
+            df,
+            required_columns=['symbol', 'timestamp', 'close', 'price_change']
+        )
+        
+        assert result.valid is True
+
+    def test_validate_missing_required_columns(self):
+        """Test schema validation detects missing required columns"""
+        df = pd.DataFrame({
+            'symbol': ['BTCUSDT'],
+            'timestamp': [datetime.now()]
+        })
+        
+        result = validate_dataframe_schema(
+            df,
+            required_columns=['symbol', 'timestamp', 'close', 'volume']
+        )
+        
+        assert result.valid is False
+        assert len(result.errors) > 0
+
+    def test_validate_empty_dataframe(self):
+        """Test schema validation with empty DataFrame"""
+        df = pd.DataFrame()
+        
+        result = validate_dataframe_schema(
+            df,
+            required_columns=['symbol', 'timestamp']
+        )
+        
+        assert result.valid is False
 
 
 if __name__ == "__main__":

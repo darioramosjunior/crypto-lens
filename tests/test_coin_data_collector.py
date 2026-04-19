@@ -1,6 +1,7 @@
 """
 Unit tests for coin_data_collector.py
 Tests critical functions: is_valid_symbol, get_coins_from_binance (mocked), get_market_cap_data (mocked)
+Also includes validation tests for pydantic models
 """
 
 import pytest
@@ -11,6 +12,8 @@ from typing import List, Dict, Any
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from validations import CoinDataModel, CoinListResponse
 
 # We'll test the functions independently to avoid external API calls
 
@@ -224,6 +227,176 @@ class TestBatchProcessing:
         assert len(batches[1]) == 50
         assert len(batches[2]) == 50
         assert len(batches[3]) == 5
+
+
+# ============================================================================
+# Pydantic Validation Model Tests
+# ============================================================================
+
+class TestCoinDataModelValidation:
+    """Test suite for CoinDataModel pydantic validation"""
+
+    def test_valid_coin_data_model(self):
+        """Test CoinDataModel with valid data"""
+        coin = CoinDataModel(
+            coin="BTC",
+            market_cap=1000000000000,
+            category="Large Cap"
+        )
+        
+        assert coin.coin == "BTC"
+        assert coin.market_cap == 1000000000000
+        assert coin.category == "Large Cap"
+
+    def test_coin_symbol_validation_rejects_special_chars(self):
+        """Test that CoinDataModel rejects invalid coin symbols"""
+        with pytest.raises(ValueError):
+            CoinDataModel(
+                coin="BTC-USD",
+                market_cap=1000000000000,
+                category="Large Cap"
+            )
+
+    def test_coin_symbol_validation_rejects_unicode(self):
+        """Test that CoinDataModel rejects unicode symbols"""
+        with pytest.raises(ValueError):
+            CoinDataModel(
+                coin="BTC€",
+                market_cap=1000000000000,
+                category="Large Cap"
+            )
+
+    def test_coin_symbol_uppercase_conversion(self):
+        """Test that coin symbols are converted to uppercase"""
+        coin = CoinDataModel(
+            coin="btc",
+            market_cap=1000000000000,
+            category="Large Cap"
+        )
+        
+        assert coin.coin == "BTC"
+
+    def test_market_cap_as_string_value(self):
+        """Test CoinDataModel accepts market cap as string"""
+        coin = CoinDataModel(
+            coin="ETH",
+            market_cap="500000000000",
+            category="Large Cap"
+        )
+        
+        assert coin.market_cap == "500000000000"
+
+    def test_market_cap_na_string(self):
+        """Test CoinDataModel handles N/A market cap"""
+        coin = CoinDataModel(
+            coin="ADA",
+            market_cap="N/A",
+            category="N/A"
+        )
+        
+        assert coin.market_cap == "N/A"
+
+    def test_coin_min_length_validation(self):
+        """Test that coin symbol has minimum length"""
+        # Empty string should fail
+        with pytest.raises(ValueError):
+            CoinDataModel(
+                coin="",
+                market_cap=1000000000000,
+                category="Large Cap"
+            )
+
+    def test_default_category_value(self):
+        """Test that category field has default value"""
+        coin = CoinDataModel(
+            coin="SOL",
+            market_cap=1000000000
+        )
+        
+        assert coin.category == "N/A"
+
+
+class TestCoinListResponseValidation:
+    """Test suite for CoinListResponse pydantic validation"""
+
+    def test_valid_coin_list_response(self):
+        """Test CoinListResponse with valid data"""
+        response = CoinListResponse(
+            coins=["BTC", "ETH", "BNB", "ADA"],
+            count=4
+        )
+        
+        assert len(response.coins) == 4
+        assert response.count == 4
+
+    def test_coin_count_must_match_list_length(self):
+        """Test that count must match coins list length"""
+        with pytest.raises(ValueError):
+            CoinListResponse(
+                coins=["BTC", "ETH", "BNB"],
+                count=5  # Mismatch
+            )
+
+    def test_empty_coin_list_raises_error(self):
+        """Test that empty coin list raises error"""
+        with pytest.raises(ValueError):
+            CoinListResponse(coins=[])
+
+    def test_count_can_be_optional(self):
+        """Test that count is optional"""
+        response = CoinListResponse(coins=["BTC", "ETH"])
+        
+        assert response.count is None
+        assert len(response.coins) == 2
+
+    def test_large_coin_list(self):
+        """Test CoinListResponse with large coin list"""
+        large_list = [f"COIN{i}" for i in range(100)]
+        
+        response = CoinListResponse(
+            coins=large_list,
+            count=100
+        )
+        
+        assert response.count == 100
+
+
+class TestCoinDataValidationIntegration:
+    """Integration tests for coin data validation"""
+
+    def test_validate_coin_list_and_individual_coins(self, sample_coin_data_records):
+        """Test validating a coin list with individual coin records"""
+        coins = ["BTC", "ETH", "BNB", "ADA"]
+        
+        # Validate list
+        coin_list = CoinListResponse(coins=coins, count=4)
+        assert coin_list.count == len(coins)
+        
+        # Validate individual records
+        for record in sample_coin_data_records:
+            coin = CoinDataModel(
+                coin=record['coin'],
+                market_cap=record['market_cap'],
+                category=record['category']
+            )
+            assert coin.coin in coins or coin.coin.upper() in coins
+
+    def test_invalid_coin_record_in_batch(self):
+        """Test handling of invalid coin records in batch"""
+        invalid_records = [
+            {'coin': 'BTC', 'market_cap': 1000000000, 'category': 'Large'},
+            {'coin': 'BTC-USD', 'market_cap': 1000000000, 'category': 'Large'}  # Invalid
+        ]
+        
+        valid_count = 0
+        for record in invalid_records:
+            try:
+                CoinDataModel(**record)
+                valid_count += 1
+            except ValueError:
+                pass  # Expected for invalid record
+        
+        assert valid_count == 1  # Only first record is valid
 
 
 if __name__ == "__main__":

@@ -176,3 +176,180 @@ def session_temp_dir():
     # Cleanup
     if os.path.exists(temp_path):
         shutil.rmtree(temp_path)
+
+
+# ============================================================================
+# Validation-specific Fixtures
+# ============================================================================
+
+@pytest.fixture
+def sample_ohlcv_data():
+    """Create sample OHLCV data for validation tests"""
+    return [
+        [1704067200000, "45000", "45500", "44500", "45200", "1000000", 1704070800000, "45200000000", 100, "500000", "225000000", "0"],
+        [1704070800000, "45200", "45700", "45000", "45500", "1100000", 1704074400000, "50050000000", 110, "550000", "247750000", "0"],
+        [1704074400000, "45500", "46000", "45400", "45800", "1200000", 1704078000000, "54960000000", 120, "600000", "271200000", "0"]
+    ]
+
+
+@pytest.fixture
+def sample_price_change_records():
+    """Create sample price change records for validation tests"""
+    from datetime import datetime
+    now = datetime.now()
+    
+    return [
+        {
+            'symbol': 'BTCUSDT',
+            'timestamp': now,
+            'close': 45200.0,
+            'previous_close': 44000.0,
+            'price_change': 2.73,
+            'trend_category': 'uptrend',
+            'market_cap_category': 'Large Cap'
+        },
+        {
+            'symbol': 'ETHUSDT',
+            'timestamp': now,
+            'close': 2500.0,
+            'previous_close': 2400.0,
+            'price_change': 4.17,
+            'trend_category': 'uptrend',
+            'market_cap_category': 'Large Cap'
+        },
+        {
+            'symbol': 'BNBUSDT',
+            'timestamp': now,
+            'close': 600.0,
+            'previous_close': 620.0,
+            'price_change': -3.23,
+            'trend_category': 'downtrend',
+            'market_cap_category': 'Large Cap'
+        }
+    ]
+
+
+@pytest.fixture
+def sample_indicator_records():
+    """Create sample indicator records for validation tests"""
+    from datetime import datetime
+    now = datetime.now()
+    
+    return [
+        {
+            'symbol': 'BTCUSDT',
+            'timestamp': now,
+            'open': 45000.0,
+            'high': 45500.0,
+            'low': 44500.0,
+            'close': 45200.0,
+            'volume': 1000000.0,
+            'sma20': 44800.0,
+            'sma50': 44000.0,
+            'sma100': 43000.0,
+            'rsi14': 65.5,
+            'volume_sma20': 950000.0
+        },
+        {
+            'symbol': 'ETHUSDT',
+            'timestamp': now,
+            'open': 2400.0,
+            'high': 2500.0,
+            'low': 2380.0,
+            'close': 2500.0,
+            'volume': 500000.0,
+            'sma20': 2450.0,
+            'sma50': 2400.0,
+            'sma100': 2350.0,
+            'rsi14': 72.3,
+            'volume_sma20': 480000.0
+        }
+    ]
+
+
+@pytest.fixture
+def sample_oi_change_records():
+    """Create sample OI change records for validation tests"""
+    from datetime import datetime
+    now = datetime.now()
+    
+    return [
+        {
+            'symbol': 'BTCUSDT',
+            'timestamp': now,
+            'current_oi': 1000000000.0,
+            'previous_oi': 900000000.0,
+            'oi_change': 11.11,
+            'oi_change_abs': 100000000.0,
+            'market_cap_category': 'Large Cap'
+        },
+        {
+            'symbol': 'ETHUSDT',
+            'timestamp': now,
+            'current_oi': 500000000.0,
+            'previous_oi': 550000000.0,
+            'oi_change': -9.09,
+            'oi_change_abs': -50000000.0,
+            'market_cap_category': 'Large Cap'
+        }
+    ]
+
+
+@pytest.fixture
+def sample_market_breadth_data():
+    """Create sample market breadth data for validation tests"""
+    from datetime import datetime
+    
+    return {
+        'timestamp': datetime.now(),
+        'total_coins': 100,
+        'positive_coins': 65,
+        'negative_coins': 35,
+        'uptrend_count': 45,
+        'downtrend_count': 25,
+        'pullback_count': 20,
+        'reversal_up_count': 7,
+        'reversal_down_count': 3,
+        'btc_change': 2.5,
+        'btc_dominance_change': 1.2
+    }
+
+
+@pytest.fixture
+def sample_coin_data_records():
+    """Create sample coin data records for validation tests"""
+    return [
+        {
+            'coin': 'BTC',
+            'market_cap': 1000000000000,
+            'category': 'Large Cap'
+        },
+        {
+            'coin': 'ETH',
+            'market_cap': 500000000000,
+            'category': 'Large Cap'
+        },
+        {
+            'coin': 'BNB',
+            'market_cap': 100000000000,
+            'category': 'Mid Cap'
+        },
+        {
+            'coin': 'ADA',
+            'market_cap': 20000000000,
+            'category': 'Small Cap'
+        }
+    ]
+
+
+@pytest.fixture
+def invalid_ohlcv_data():
+    """Create invalid OHLCV data for negative validation tests"""
+    return [
+        # High < Low
+        [1704067200000, "45000", "44500", "45500", "45200", "1000000", 1704070800000, "45200000000", 100, "500000", "225000000", "0"],
+        # Close > High
+        [1704070800000, "45200", "45500", "45000", "46000", "1100000", 1704074400000, "50050000000", 110, "550000", "247750000", "0"],
+        # Negative price
+        [-1000, "45500", "46000", "45400", "45800", "1200000", 1704078000000, "54960000000", 120, "600000", "271200000", "0"]
+    ]
