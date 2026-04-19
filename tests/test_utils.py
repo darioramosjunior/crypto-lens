@@ -249,67 +249,71 @@ class TestDataLoaderUtility:
 class TestMathUtility:
     """Test suite for MathUtility class"""
 
-    def test_normalize_data_normalizes_correctly(self):
-        """Test that normalize_data normalizes data to 0-1 range"""
-        data = [1, 2, 3, 4, 5]
+    def test_calculate_percentage_returns_formatted_string(self):
+        """Test that calculate_percentage returns formatted percentage string"""
+        result = MathUtility.calculate_percentage(50, 100)
         
-        result = MathUtility.normalize_data(data)
-        
-        assert isinstance(result, list)
-        assert len(result) == 5
-        assert result[0] == 0.0
-        assert result[-1] == 1.0
-        assert all(0 <= x <= 1 for x in result)
+        assert isinstance(result, str)
+        assert "50.00" in result
+        assert "%" in result
 
-    def test_normalize_data_with_identical_values(self):
-        """Test normalize_data with identical values"""
-        data = [5, 5, 5, 5]
+    def test_calculate_percentage_with_division_by_zero(self):
+        """Test that calculate_percentage handles division by zero"""
+        result = MathUtility.calculate_percentage(100, 0)
         
-        result = MathUtility.normalize_data(data)
-        
-        assert len(result) == 4
-        # Division by zero should be handled
-        assert all(x == 0.0 for x in result)
+        assert result == "0.00 %"
 
-    def test_normalize_data_with_negative_values(self):
-        """Test normalize_data with negative values"""
-        data = [-2, -1, 0, 1, 2]
+    def test_calculate_percentage_various_values(self):
+        """Test calculate_percentage with various inputs"""
+        test_cases = [
+            (25, 100, "25.00"),
+            (1, 3, "33.33"),
+            (200, 50, "400.00"),
+            (0, 100, "0.00"),
+        ]
         
-        result = MathUtility.normalize_data(data)
-        
-        assert result[0] == 0.0
-        assert result[-1] == 1.0
-        assert all(0 <= x <= 1 for x in result)
+        for numerator, denominator, expected in test_cases:
+            result = MathUtility.calculate_percentage(numerator, denominator)
+            assert expected in result
 
-    def test_calculate_percentage_change(self):
-        """Test calculate_percentage_change calculation"""
-        old_value = 100
-        new_value = 150
+    def test_calculate_price_change_percent(self):
+        """Test that calculate_price_change_percent calculates correctly"""
+        current_price = 150
+        previous_price = 100
         
-        result = MathUtility.calculate_percentage_change(old_value, new_value)
+        result = MathUtility.calculate_price_change_percent(current_price, previous_price)
         
+        assert result is not None
         assert result == 50.0
 
-    def test_calculate_percentage_change_negative(self):
-        """Test calculate_percentage_change with negative change"""
-        old_value = 100
-        new_value = 50
+    def test_calculate_price_change_percent_negative(self):
+        """Test calculate_price_change_percent with price decrease"""
+        current_price = 50
+        previous_price = 100
         
-        result = MathUtility.calculate_percentage_change(old_value, new_value)
+        result = MathUtility.calculate_price_change_percent(current_price, previous_price)
         
+        assert result is not None
         assert result == -50.0
 
-    def test_calculate_percentage_change_zero_old_value(self):
-        """Test calculate_percentage_change with zero old value"""
-        old_value = 0
-        new_value = 100
+    def test_calculate_price_change_percent_zero_previous_price(self):
+        """Test calculate_price_change_percent with zero previous price"""
+        current_price = 100
+        previous_price = 0
         
-        # Should handle division by zero
-        try:
-            result = MathUtility.calculate_percentage_change(old_value, new_value)
-            assert result == 0 or result is None or isinstance(result, (int, float))
-        except ZeroDivisionError:
-            pass  # Expected behavior
+        result = MathUtility.calculate_price_change_percent(current_price, previous_price)
+        
+        assert result is None
+
+    def test_calculate_price_change_percent_nan_values(self):
+        """Test calculate_price_change_percent with NaN values"""
+        import numpy as np
+        
+        result = MathUtility.calculate_price_change_percent(np.nan, 100)
+        assert result is None
+        
+        result = MathUtility.calculate_price_change_percent(100, np.nan)
+        assert result is None
 
 
 if __name__ == "__main__":
