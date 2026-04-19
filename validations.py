@@ -144,7 +144,7 @@ class MarketBreadthData(BaseModel):
     """Validates market breadth metrics"""
     timestamp: datetime = Field(..., description="Data timestamp")
     total_coins: int = Field(..., ge=1, description="Total number of coins analyzed")
-    positive_coins: int = Field(..., ge=0, le=lambda: 100, description="Coins with positive change")
+    positive_coins: int = Field(..., ge=0, description="Coins with positive change")
     negative_coins: int = Field(..., ge=0, description="Coins with negative change")
     unchanged_coins: int = Field(default=0, ge=0, description="Coins with no change")
     uptrend_count: int = Field(default=0, ge=0, description="Coins in uptrend")
