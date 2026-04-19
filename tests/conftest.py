@@ -2,11 +2,32 @@
 Pytest configuration and shared fixtures for all tests
 """
 
+import sys
+from unittest.mock import MagicMock
+
 import pytest
 import tempfile
 import shutil
 import os
 from pathlib import Path
+
+# Mock external dependencies that may not be installed or aren't needed for unit tests
+# These mocks must be set up BEFORE any imports of modules that use them
+boto3_mock = MagicMock()
+boto3_mock.client = MagicMock(return_value=MagicMock())
+boto3_mock.Session = MagicMock()
+sys.modules['boto3'] = boto3_mock
+
+botocore_mock = MagicMock()
+botocore_exceptions_mock = MagicMock()
+botocore_exceptions_mock.NoCredentialsError = Exception
+botocore_exceptions_mock.ClientError = Exception
+sys.modules['botocore'] = botocore_mock
+sys.modules['botocore.exceptions'] = botocore_exceptions_mock
+
+sys.modules['ccxt'] = MagicMock()
+sys.modules['aiohttp'] = MagicMock()
+sys.modules['pandas_ta'] = MagicMock()
 
 
 @pytest.fixture
