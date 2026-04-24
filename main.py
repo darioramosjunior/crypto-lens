@@ -40,7 +40,8 @@ def main() -> int:
         "hourly_fetch_and_pulse.py",
         "daily_fetch_and_pulse.py",
         "market_breadth.py",
-        "oi_change_screener.py"
+        "oi_change_screener.py",
+        "pipeline_observability.py"
     ]
     
     print("\n" + "="*60)
