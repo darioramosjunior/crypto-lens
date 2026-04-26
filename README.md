@@ -2,7 +2,13 @@
 
 A comprehensive cryptocurrency intelligence platform that monitors, analyzes, and alerts on crypto market movements in real-time. This data engineering project combines live market data collection, advanced technical analysis, and intelligent alerting to provide actionable insights into cryptocurrency markets.
 
+Grafana
 <img width="1560" height="742" alt="image" src="https://github.com/user-attachments/assets/fa73aa08-82ce-48c4-8e05-f0c800895807" />
+
+Discord Alerts
+<img width="836" height="811" alt="image" src="https://github.com/user-attachments/assets/bdeeb192-50a9-405e-b0aa-ddba5a64817a" />
+<img width="1060" height="772" alt="image" src="https://github.com/user-attachments/assets/55cef5a8-415e-41ed-a5af-ee0ab309c3e1" />
+<img width="848" height="712" alt="image" src="https://github.com/user-attachments/assets/3480e148-1ff5-493a-8e87-7a3774287065" />
 
 ## 📋 Overview
 
