@@ -7,7 +7,7 @@ Grafana
 
 Discord Alerts
 <img width="836" height="811" alt="image" src="https://github.com/user-attachments/assets/bdeeb192-50a9-405e-b0aa-ddba5a64817a" />
-<img width="1056" height="765" alt="image" src="https://github.com/user-attachments/assets/4d96785a-2c71-46af-9e68-fa6341952434" />
+<img width="832" height="760" alt="image" src="https://github.com/user-attachments/assets/978ae9ee-e295-4c66-a754-4e933130cb38" />
 <img width="848" height="712" alt="image" src="https://github.com/user-attachments/assets/3480e148-1ff5-493a-8e87-7a3774287065" />
 
 ## 📋 Overview
