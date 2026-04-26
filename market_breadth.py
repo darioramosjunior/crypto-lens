@@ -165,4 +165,5 @@ def main() -> None:
 
 if __name__ == '__main__':
     print(f"Running {__file__}...")
+    logger.log_event(log_category="INFO", message="Running market_breadth script", path=log_path)
     main()
