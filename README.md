@@ -29,6 +29,10 @@ Perfect for traders, data analysts, and crypto enthusiasts who want automated, d
   - 24-hour price action and technical analysis
   - Latest Top Gainers & Top Losers for the day
 
+- **Market Breadth Analysis** - Aggregate market metrics and trends
+  - Analyzes market-wide sentiment across all trading pairs
+  - Continues advancing/declining coin counts
+
 - **Open Interest Screener** - Futures market intelligence
   - Monitors OI changes across all trading pairs
   - Alerts on significant position accumulations
@@ -36,7 +40,13 @@ Perfect for traders, data analysts, and crypto enthusiasts who want automated, d
 
 - **Coin Data Collector** - Metadata and fundamental analysis
   - Fetches market cap data from CoinMarketCap API
-  - Categorize market cap value for each trading pair
+  - Categorizes market cap value for each trading pair
+
+- **Pipeline Observability** - Real-time pipeline monitoring
+  - Monitors all data pipeline scripts for errors/warnings
+  - Analyzes log files for anomalies and failures
+  - Sends aggregated reports to Discord
+  - Tracks pipeline health and performance metrics
 
 ### Data & Visualization
 - **Multiple Data Sources**
@@ -86,8 +96,10 @@ Discord Alerts & S3 Archival
 | `main.py` | Script orchestrator | Every 5 minutes (cron) | Orchestrates all sub-scripts in sequence |
 | `hourly_fetch_and_pulse.py` | Market pulse analysis | Hourly (via main.py) | Charts, Discord alerts, CSV data |
 | `daily_fetch_and_pulse.py` | Daily market summary | Daily (via main.py) | Performance reports, visualizations, S3 upload |
+| `market_breadth.py` | Market breadth metrics | Hourly (via main.py) | Breadth data, sentiment reports, S3 upload |
 | `oi_change_screener.py` | Open interest monitoring | Hourly (via main.py) | OI change alerts, top 20 movers |
 | `coin_data_collector.py` | Coin metadata collection | Daily (via main.py) | Coin database CSV, market cap data |
+| `pipeline_observability.py` | Pipeline health monitoring | Hourly (via main.py) | Error/warning summaries, Discord alerts |
 | `discord_integrator.py` | Webhook integration | On-demand | Message/image delivery to Discord |
 | `logger.py` | Event logging system | Continuous | Structured logs with timestamps |
 | `logs_cleaner.py` | Log maintenance | Daily (separate cron) | Cleanup of logs older than retention period |
@@ -97,17 +109,20 @@ Discord Alerts & S3 Archival
 ### Core Dependencies
 - **Data Processing**: Pandas, NumPy, SciPy
 - **Technical Analysis**: Pandas-TA (RSI, Moving Averages, etc.)
+- **Data Validation**: Pydantic (runtime type validation)
 - **Market Data**: CCXT, Binance Futures API, aiohttp
 - **APIs**: CoinMarketCap, Discord Webhooks
 - **Visualization**: Matplotlib, Kaleido (chart export)
 - **Cloud Storage**: AWS S3 (boto3)
 - **Async Processing**: Python asyncio
 - **Time Series**: Dateparser
+- **Testing**: Pytest, Flake8 (linting)
 
 ### Optional Integrations
 - **Grafana** - For dashboard visualization
 - **Any Webhook Service** - Discord, Slack, etc.
 - **AWS S3** - For data archival
+- **GitHub Actions** - For CI/CD pipeline testing
 
 ## 📦 Requirements
 
@@ -120,11 +135,14 @@ Key packages:
 - ccxt==4.4.78
 - pandas==2.2.3
 - numpy>=2.0.0
+- pandas-ta (technical analysis & advanced indicators)
+- pydantic (data validation)
 - aiohttp==3.10.11
 - boto3 (for AWS S3)
 - requests (for webhooks)
 - matplotlib>=3.9.0
-- pandas-ta (technical analysis)
+- pytest (testing framework)
+- flake8 (code linting)
 
 ## 🚀 Getting Started
 
@@ -224,6 +242,59 @@ This automatically creates:
 0 15 * * * cd /path/to/crypto-lens && /path/to/venv/bin/python3 logs_cleaner.py >> /var/log/crypto-lens/logs_cleaner.log 2>&1
 ```
 
+## 🧪 Testing & Quality Assurance
+
+The project includes comprehensive testing infrastructure:
+
+### Unit Tests
+- Located in `tests/` directory
+- Covers critical modules:
+  - `test_coin_data_collector.py` - Coin collection logic
+  - `test_utils.py` - Utility helper functions
+  - `test_validations.py` - Data validation models
+  - `test_logger_config.py` - Logging configuration
+  - Integration tests for data pipelines
+
+### Running Tests
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_coin_data_collector.py
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage report
+pytest --cov=. tests/
+```
+
+### Running Tests with Coverage
+```bash
+# Install coverage package
+pip install pytest-cov
+
+# Run tests with coverage
+pytest --cov=. --cov-report=html tests/
+```
+
+### Continuous Integration
+- **GitHub Actions** - Automated testing on push/PR
+- **Linting** - Flake8 checks for code quality (E9, F63, F7, F82)
+- **Multi-version testing** - Tests run on Python 3.10 and 3.11
+- **Pre-commit hooks** - Setup available via `setup_pre_commit.py`
+
+### Data Validation
+The project uses **Pydantic** for runtime data validation:
+- **CoinDataModel** - Validates coin metadata
+- **OHLCVData** - Validates candlestick data
+- **TrendCounts** - Validates trend analysis results
+- **PriceChangeData** - Validates price change metrics
+- All data collectors validate output before writing/sending
+
+For detailed testing information, see [TESTING_QUICKSTART.md](TESTING_QUICKSTART.md)
+
 ## � Directory & Permission Persistence
 
 The application is configured to maintain directory structure and permissions across EC2 instance reboots:
@@ -294,6 +365,36 @@ Example dashboard setup:
 3. Set refresh intervals to match script execution frequency
 4. Customize alerts based on technical conditions
 
+## 🎯 Code Quality & Architecture
+
+### Type Hints & Code Safety
+- **Full Type Annotations** - All modules include comprehensive type hints for better IDE support and error detection
+- **Static Analysis** - Flake8 linting ensures code quality standards
+- **Runtime Validation** - Pydantic models validate all data throughout the pipeline
+
+### Shared Utilities (`utils.py`)
+Centralized helper functions to reduce code duplication:
+- **FileUtility** - File and directory operations
+- **ConfigManager** - Configuration value retrieval
+- **S3Manager** - AWS S3 upload/download operations
+- **DataProcessor** - DataFrame transformations and calculations
+- **TechnicalIndicators** - Pandas-TA wrapper functions
+
+### Data Validation Pipeline
+Real-time validation using Pydantic models:
+- Validates coin data (symbols, market caps)
+- Validates OHLCV candlestick data
+- Validates technical indicators and calculations
+- Validates price change metrics
+- Ensures data integrity before processing
+
+### Production-Ready Features
+- **Comprehensive Logging** - Structured logs for all operations
+- **Error Handling** - Graceful error recovery and alerts
+- **Async Processing** - Efficient concurrent API requests
+- **Rate Limiting** - Respects API rate limits
+- **Data Persistence** - Maintains state across runs
+
 ## 📝 Configuration
 
 ### config.conf Format
@@ -313,7 +414,7 @@ logs_cleaner_cron_sched = 0 15 * * *
 - **Cron Schedules**: Frequency of automated runs (see crontab syntax)
   - `main_cron_sched`: Frequency for main.py (orchestrates all analysis scripts)
   - `logs_cleaner_cron_sched`: Frequency for log cleanup
-  - Note: All analysis scripts (hourly, daily, OI screener, coin collector) run through main.py
+  - Note: All analysis scripts (hourly, daily, OI screener, coin collector, market breadth, pipeline observability) run through main.py
 - **Webhook URLs**: Discord or compatible webhook endpoints
 - **AWS Region**: For S3 storage operations
 
@@ -333,6 +434,11 @@ logs_cleaner_cron_sched = 0 15 * * *
 4. Generates daily performance report
 5. Backs up latest data to AWS S3
 
+### Market Breadth Analysis
+1. Analyzes aggregate market metrics across all pairs
+2. Calculates advance/decline statistics
+3. Sends breadth reports to Discord and S3
+
 ### OI Change Screener
 1. Monitors open interest across Binance pairs
 2. Tracks percentage changes from previous scan
@@ -346,6 +452,13 @@ logs_cleaner_cron_sched = 0 15 * * *
 3. Correlates with technical indicators
 4. Updates master coin database
 5. Enables fundamental + technical analysis
+
+### Pipeline Observability
+1. Monitors log files from all data pipeline scripts
+2. Parses logs for errors, warnings, and anomalies
+3. Aggregates pipeline health metrics
+4. Generates summary report of latest run
+5. Sends observability alerts to Discord webhook
 
 ## 📈 Use Cases
 
@@ -459,15 +572,21 @@ This project demonstrates:
 - ✅ Real-time data pipeline architecture
 - ✅ Async programming with Python (asyncio)
 - ✅ Third-party API integration (REST, WebSocket)
-- ✅ Technical indicator development
+- ✅ Technical indicator development with Pandas-TA
+- ✅ Market-wide sentiment analysis (breadth metrics)
 - ✅ Cloud data storage (AWS S3)
 - ✅ Automated alerting systems
-- ✅ Data visualization and dashboarding
+- ✅ Data visualization and dashboarding (Matplotlib, Grafana)
 - ✅ Production-grade logging and error handling
 - ✅ Scheduled task orchestration
 - ✅ Regex and financial data processing
+- ✅ Type hints and static analysis (Pylance, Flake8)
+- ✅ Comprehensive unit testing (Pytest)
+- ✅ Runtime data validation (Pydantic)
+- ✅ Shared utility libraries and code organization
+- ✅ CI/CD pipeline integration (GitHub Actions)
 
-Perfect portfolio project showcasing full-stack data engineering capabilities.
+Perfect portfolio project showcasing full-stack data engineering capabilities with production best practices.
 
 ---
 
