@@ -596,6 +596,7 @@ if __name__ == "__main__":
         message=f"Successfully processed {len(oi_changes_with_prices)} coins and sent top 20 OI changes to Discord. New coins: {len(new_coins)}",
         path=log_path
     )
+    logger.log_event(log_category="INFO", message="Process completed successfully", path=log_path)
     print("Done!")
     print(f"  - OI changes uploaded to S3: s3://{ConfigManager.get_s3_bucket()}/oi-change/oi_changes_1h.csv")
     print(f"  - OI changes saved locally to: {oi_changes_csv}")

@@ -161,6 +161,8 @@ def main() -> None:
 
     if webhook_url:
         send_to_discord(webhook_url, message=message)
+    
+    logger.log_event(log_category="INFO", message="Process completed successfully", path=log_path)
 
 
 if __name__ == '__main__':
