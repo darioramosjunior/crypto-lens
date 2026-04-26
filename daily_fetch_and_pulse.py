@@ -251,6 +251,7 @@ def format_message(input_dict, market_cap_categories, gainers=True):
 
 if __name__ == "__main__":
     print(f"Running {__file__}...")
+    logger.log_event(log_category="INFO", message="Running daily_fetch_and_pulse script", path=log_path)
     
     # Step 1: Get coin list
     coins = DataLoaderUtility.get_coins_from_csv(coin_data_path, log_path)

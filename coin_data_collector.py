@@ -333,6 +333,7 @@ def upload_dataframe_to_s3(dataframe: 'pd.DataFrame', s3_key: str) -> bool:
 if __name__ == "__main__":
     import pandas as pd
     print(f"Running {__file__}...")
+    logger.log_event(log_category="INFO", message="Running coin_data_collector script", path=log_path)
 
     # Step 1: Get coin list from Binance
     print("\nStep 1: Fetching active futures coins from Binance...")

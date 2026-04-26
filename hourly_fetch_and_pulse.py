@@ -314,6 +314,7 @@ def generate_rsi_sentiment_chart(indicators_data):
 
 if __name__ == "__main__":
     print(f"Running {__file__}...")
+    logger.log_event(log_category="INFO", message="Running hourly_fetch_and_pulse script", path=log_path)
     
     # Step 1: Get coin list
     coins = DataLoaderUtility.get_coins_from_csv(coin_data_path, log_path)

@@ -516,6 +516,7 @@ def format_discord_message(top_oi_changes, previous_top20_symbols, limit=20):
 
 if __name__ == "__main__":
     print(f"Running {__file__}...")
+    logger.log_event(log_category="INFO", message="Running oi_change_screener script", path=log_path)
 
     # Load market cap category and market cap values from coin_data.csv
     category_data = DataLoaderUtility.load_market_cap_categories(coin_data_csv, log_path)
