@@ -359,4 +359,5 @@ if __name__ == "__main__":
     df_for_s3 = pd.read_csv(coin_data_output_path)
     upload_dataframe_to_s3(df_for_s3, "coin-data/coin_data.csv")
 
+    logger.log_event(log_category="INFO", message="Process completed successfully", path=log_path)
     print("\n[OK] Process completed successfully!")

@@ -328,6 +328,7 @@ if __name__ == "__main__":
         logger.log_event(log_category="ERROR", message=f"Failed to send to Discord. Error: {e}", path=log_path)
         print(f"[ERROR] Failed to send to Discord: {e}")
     
+    logger.log_event(log_category="INFO", message="Process completed successfully", path=log_path)
     print("\n[OK] Process completed successfully!")
     print(f"  - Prices saved locally: {prices_1d_path}")
     print(f"  - Prices uploaded to S3: s3://{ConfigManager.get_s3_bucket()}/price-change/prices_1d.csv")

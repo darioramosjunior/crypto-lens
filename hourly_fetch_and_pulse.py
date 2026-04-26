@@ -385,6 +385,7 @@ if __name__ == "__main__":
             logger.log_event(log_category="ERROR", message=f"Failed to upload RSI sentiment chart to Discord. Error: {e}", path=log_path)
             print(f"[ERROR] Failed to upload RSI sentiment chart: {e}")
     
+    logger.log_event(log_category="INFO", message="Process completed successfully", path=log_path)
     print("\n[OK] Process completed successfully!")
     print(f"  - Price changes uploaded to S3: s3://{ConfigManager.get_s3_bucket()}/price-change/prices_1h.csv")
     print(f"  - Trend counts uploaded to S3: s3://{ConfigManager.get_s3_bucket()}/market-pulse/coin_trend_1h.csv")
